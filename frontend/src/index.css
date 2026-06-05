@@ -1,0 +1,94 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900 text-gray-100;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-slate-800/70 backdrop-blur-xl border border-white/10 rounded-2xl;
+  }
+
+  .btn-primary {
+    @apply bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold px-6 py-3 rounded-lg transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/40;
+  }
+
+  .btn-secondary {
+    @apply glass-card px-6 py-3 font-semibold rounded-lg transition-all duration-200 hover:bg-slate-700/70;
+  }
+
+  .sidebar-item {
+    @apply p-3 rounded-lg transition-all duration-200 hover:bg-blue-500/10 hover:border-l-2 hover:border-blue-500;
+  }
+
+  .sidebar-item.active {
+    @apply bg-blue-500/15 border-l-2 border-blue-500;
+  }
+
+  .file-card {
+    @apply glass-card p-6 rounded-xl transition-all duration-300 cursor-pointer hover:-translate-y-1 hover:shadow-xl hover:shadow-black/40;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold;
+  }
+
+  .badge-draft {
+    @apply bg-gray-500/20 text-gray-300;
+  }
+
+  .badge-pending {
+    @apply bg-yellow-500/20 text-yellow-300;
+  }
+
+  .badge-approved {
+    @apply bg-green-500/20 text-green-300;
+  }
+
+  .badge-rejected {
+    @apply bg-red-500/20 text-red-300;
+  }
+
+  .input-field {
+    @apply glass-card px-4 py-3 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all;
+  }
+
+  .modal-overlay {
+    @apply fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4;
+  }
+
+  .dropzone {
+    @apply border-2 border-dashed border-blue-500/30 rounded-lg p-12 text-center transition-all duration-300 hover:border-blue-500 hover:bg-blue-500/5;
+  }
+
+  .dropzone.dragover {
+    @apply border-blue-500 bg-blue-500/10;
+  }
+}
+
+@layer utilities {
+  .gradient-text {
+    @apply bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent;
+  }
+
+  .fade-in-up {
+    animation: fadeInUp 0.5s ease-out;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
