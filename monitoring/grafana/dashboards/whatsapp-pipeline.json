@@ -1,0 +1,108 @@
+{
+  "uid": "whatsapp-pipeline",
+  "title": "WhatsApp Pipeline",
+  "tags": ["docuvault", "whatsapp"],
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1, "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "title": "WhatsApp Session",
+      "type": "stat",
+      "targets": [{ "expr": "docuvault_waha_session_connected", "legendFormat": "" }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "textMode": "value_and_name",
+        "mappings": [
+          { "type": "value", "options": { "0": { "text": "DISCONNECTED", "color": "red" }, "1": { "text": "CONNECTED", "color": "green" } } }
+        ]
+      },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "red", "value": 0 }, { "color": "green", "value": 1 }] } } }
+    },
+    {
+      "id": 2, "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "title": "Documents Saved — Last 24 h",
+      "type": "stat",
+      "targets": [{ "expr": "sum(increase(docuvault_whatsapp_messages_total{status=\"saved\"}[24h]))", "legendFormat": "" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": 0 }] } } }
+    },
+    {
+      "id": 3, "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "title": "Messages Skipped — Last 24 h",
+      "type": "stat",
+      "targets": [{ "expr": "sum(increase(docuvault_whatsapp_messages_total{status=\"skipped\"}[24h]))", "legendFormat": "" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "blue", "value": 0 }] } } }
+    },
+    {
+      "id": 4, "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "title": "Processing Failures — Last 24 h",
+      "type": "stat",
+      "targets": [{ "expr": "sum(increase(docuvault_whatsapp_messages_total{status=\"failed\"}[24h]))", "legendFormat": "" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "orange", "value": 1 }, { "color": "red", "value": 5 }] } } }
+    },
+    {
+      "id": 5, "gridPos": { "h": 9, "w": 14, "x": 0, "y": 5 },
+      "title": "Message Flow Over Time",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(docuvault_whatsapp_messages_total{status=\"saved\"}[10m])", "legendFormat": "Saved" },
+        { "expr": "rate(docuvault_whatsapp_messages_total{status=\"skipped\"}[10m])", "legendFormat": "Skipped (image/video)" },
+        { "expr": "rate(docuvault_whatsapp_messages_total{status=\"failed\"}[10m])", "legendFormat": "Failed" },
+        { "expr": "rate(docuvault_whatsapp_messages_total{status=\"no_media\"}[10m])", "legendFormat": "Text-only (no media)" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "/ min", "custom": { "lineWidth": 2 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Saved" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Failed" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Skipped (image/video)" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      }
+    },
+    {
+      "id": 6, "gridPos": { "h": 9, "w": 10, "x": 14, "y": 5 },
+      "title": "Message Outcomes — Breakdown",
+      "type": "piechart",
+      "targets": [
+        { "expr": "sum by (status) (docuvault_whatsapp_messages_total)", "legendFormat": "{{status}}" }
+      ],
+      "options": { "pieType": "donut", "legendDisplayMode": "table", "legendPlacement": "right" }
+    },
+    {
+      "id": 7, "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
+      "title": "Duplicate Messages Rejected",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(docuvault_whatsapp_duplicate_messages_total[10m])", "legendFormat": "Duplicates / min" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "/ min", "custom": { "lineWidth": 2 }, "color": { "fixedColor": "orange", "mode": "fixed" } } }
+    },
+    {
+      "id": 8, "gridPos": { "h": 7, "w": 12, "x": 12, "y": 14 },
+      "title": "Rate Limit Hits",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(docuvault_whatsapp_messages_total{status=\"rate_limited\"}[5m])", "legendFormat": "Rate limited / min" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "/ min", "custom": { "lineWidth": 2 }, "color": { "fixedColor": "red", "mode": "fixed" } } }
+    },
+    {
+      "id": 9, "gridPos": { "h": 7, "w": 24, "x": 0, "y": 21 },
+      "title": "Upload Failures by Stage and Source",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(docuvault_upload_failures_total{source=\"whatsapp\", stage=\"s3\"}[5m])", "legendFormat": "WhatsApp → S3 failure" },
+        { "expr": "rate(docuvault_upload_failures_total{source=\"whatsapp\", stage=\"db\"}[5m])", "legendFormat": "WhatsApp → DB failure" },
+        { "expr": "rate(docuvault_upload_failures_total{source=\"manual\", stage=\"s3\"}[5m])", "legendFormat": "Manual → S3 failure" },
+        { "expr": "rate(docuvault_upload_failures_total{source=\"manual\", stage=\"db\"}[5m])", "legendFormat": "Manual → DB failure" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "/ min", "custom": { "lineWidth": 2 } } }
+    }
+  ]
+}

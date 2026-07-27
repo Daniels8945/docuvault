@@ -1,16 +1,23 @@
+import logging
+import time
 import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
 import storage
 from database import get_session
-from models import Document, DocumentRead, DocumentUpdate, DocumentVersion, DocumentVersionRead
+from metrics import DOCUMENTS_UPLOADED, UPLOAD_FAILURES, S3_OPERATION_SECONDS
+from models import Document, DocumentRead, DocumentUpdate, DocumentVersion, DocumentVersionRead, Approval
+
+log = logging.getLogger("docuvault.documents")
 
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
+
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 @router.get("", response_model=List[DocumentRead])
@@ -19,6 +26,8 @@ def get_documents(
     folder_id: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
     session: Session = Depends(get_session),
 ):
     query = select(Document)
@@ -30,6 +39,7 @@ def get_documents(
         query = query.where(Document.status == status)
     if search:
         query = query.where(Document.name.contains(search))
+    query = query.offset(skip).limit(limit)
     return session.exec(query).all()
 
 
@@ -43,11 +53,29 @@ async def upload_document(
     session: Session = Depends(get_session),
 ):
     file_bytes = await file.read()
+
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum upload size is {MAX_UPLOAD_BYTES // 1024 // 1024} MB.",
+        )
+    if len(file_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
     effective_workspace = workspace_id or "ws_inbox"
     file_key = f"{effective_workspace}/{uuid.uuid4().hex}/{file.filename}"
     content_type = file.content_type or "application/octet-stream"
 
-    storage.upload_file(file_bytes, file_key, content_type)
+    # Upload to S3 — timed for Prometheus
+    t0 = time.perf_counter()
+    try:
+        storage.upload_file(file_bytes, file_key, content_type)
+        S3_OPERATION_SECONDS.labels(operation="upload").observe(time.perf_counter() - t0)
+    except Exception as exc:
+        S3_OPERATION_SECONDS.labels(operation="upload").observe(time.perf_counter() - t0)
+        log.error("S3 upload failed: %s", exc)
+        UPLOAD_FAILURES.labels(stage="s3", source="manual").inc()
+        raise HTTPException(status_code=502, detail="File storage unavailable. Please try again.")
 
     document = Document(
         name=file.filename,
@@ -57,25 +85,37 @@ async def upload_document(
         workspace_id=effective_workspace,
         folder_id=folder_id,
         uploaded_by=uploaded_by,
-        status="draft",
+        status="active",
         current_version=1,
     )
     if tags:
         document.tags = [t.strip() for t in tags.split(",")]
 
-    session.add(document)
-    session.commit()
-    session.refresh(document)
+    try:
+        session.add(document)
+        session.commit()
+        session.refresh(document)
 
-    version = DocumentVersion(
-        document_id=document.id,
-        version_number=1,
-        file_path=file_key,
-        uploaded_by=uploaded_by,
-    )
-    session.add(version)
-    session.commit()
+        version = DocumentVersion(
+            document_id=document.id,
+            version_number=1,
+            file_path=file_key,
+            uploaded_by=uploaded_by,
+        )
+        session.add(version)
+        session.commit()
+    except Exception as exc:
+        log.error("DB commit failed after S3 upload — rolling back S3 key=%s: %s", file_key, exc)
+        try:
+            storage.delete_file(file_key)
+        except Exception as s3_exc:
+            log.error("S3 rollback also failed for key=%s: %s", file_key, s3_exc)
+        UPLOAD_FAILURES.labels(stage="db", source="manual").inc()
+        raise HTTPException(status_code=500, detail="Upload failed. The file has been removed from storage.")
 
+    DOCUMENTS_UPLOADED.labels(source="manual").inc()
+    log.info("Document uploaded: id=%s  name=%s  size=%d  workspace=%s",
+             document.id, document.name, len(file_bytes), effective_workspace)
     return document
 
 
@@ -109,8 +149,39 @@ def download_document(document_id: str, session: Session = Depends(get_session))
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    url = storage.get_presigned_url(document.file_path)
-    return RedirectResponse(url=url)
+    safe_name = document.name.encode("ascii", errors="replace").decode("ascii")
+    log.info("Download: id=%s  name=%s", document_id, document.name)
+    return StreamingResponse(
+        storage.stream_file(document.file_path),
+        media_type=document.file_type or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+    )
+
+
+@router.get("/{document_id}/preview")
+def preview_document(document_id: str, session: Session = Depends(get_session)):
+    document = session.get(Document, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return StreamingResponse(
+        storage.stream_file(document.file_path),
+        media_type=document.file_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{document.name}"'},
+    )
+
+
+@router.get("/{document_id}/url")
+def get_document_url(document_id: str, hours: int = 1, session: Session = Depends(get_session)):
+    """Return a short-lived presigned URL for direct browser access."""
+    document = session.get(Document, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    try:
+        url = storage.get_presigned_url(document.file_path, expires_hours=hours)
+    except Exception as exc:
+        log.error("Presigned URL generation failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not generate file URL.")
+    return {"url": url, "expires_in_seconds": hours * 3600}
 
 
 @router.delete("/{document_id}")
@@ -118,9 +189,17 @@ def delete_document(document_id: str, session: Session = Depends(get_session)):
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    storage.delete_file(document.file_path)
+    for v in session.exec(select(DocumentVersion).where(DocumentVersion.document_id == document_id)).all():
+        session.delete(v)
+    for a in session.exec(select(Approval).where(Approval.document_id == document_id)).all():
+        session.delete(a)
+    try:
+        storage.delete_file(document.file_path)
+    except Exception as exc:
+        log.warning("S3 delete failed for key=%s (document still deleted from DB): %s", document.file_path, exc)
     session.delete(document)
     session.commit()
+    log.info("Document deleted: id=%s  name=%s", document_id, document.name)
     return {"message": "Document deleted successfully"}
 
 
@@ -143,10 +222,23 @@ async def upload_new_version(
         raise HTTPException(status_code=404, detail="Document not found")
 
     file_bytes = await file.read()
+
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum upload size is {MAX_UPLOAD_BYTES // 1024 // 1024} MB.",
+        )
+    if len(file_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
     file_key = f"{document.workspace_id}/{uuid.uuid4().hex}/{file.filename}"
     content_type = file.content_type or "application/octet-stream"
 
-    storage.upload_file(file_bytes, file_key, content_type)
+    try:
+        storage.upload_file(file_bytes, file_key, content_type)
+    except Exception as exc:
+        log.error("S3 upload failed for new version: %s", exc)
+        raise HTTPException(status_code=502, detail="File storage unavailable. Please try again.")
 
     new_version_number = document.current_version + 1
     document.current_version = new_version_number
@@ -159,8 +251,19 @@ async def upload_new_version(
         file_path=file_key,
         uploaded_by=uploaded_by,
     )
-    session.add(version)
-    session.add(document)
-    session.commit()
-    session.refresh(version)
+
+    try:
+        session.add(version)
+        session.add(document)
+        session.commit()
+        session.refresh(version)
+    except Exception as exc:
+        log.error("DB commit failed for new version — rolling back S3 key=%s: %s", file_key, exc)
+        try:
+            storage.delete_file(file_key)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="Version upload failed.")
+
+    log.info("New version uploaded: doc_id=%s  v%d  size=%d", document_id, new_version_number, len(file_bytes))
     return version

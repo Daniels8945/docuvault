@@ -1,0 +1,99 @@
+{
+  "uid": "infrastructure",
+  "title": "Infrastructure — Docker Containers",
+  "tags": ["docuvault", "infra"],
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "title": "CPU Usage % by Container",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"docuvault.*\", image!=\"\"}[1m])) * 100",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "custom": { "lineWidth": 2 } } }
+    },
+    {
+      "id": 2, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "title": "Memory Usage by Container",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "container_memory_usage_bytes{name=~\"docuvault.*\", image!=\"\"}",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 2 } } }
+    },
+    {
+      "id": 3, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "title": "Network — Bytes Received / s",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(container_network_receive_bytes_total{name=~\"docuvault.*\", image!=\"\"}[1m]))",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "lineWidth": 2 } } }
+    },
+    {
+      "id": 4, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "title": "Network — Bytes Sent / s",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(container_network_transmit_bytes_total{name=~\"docuvault.*\", image!=\"\"}[1m]))",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "lineWidth": 2 } } }
+    },
+    {
+      "id": 5, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "title": "Disk I/O — Reads / s",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(container_fs_reads_bytes_total{name=~\"docuvault.*\", image!=\"\"}[1m]))",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "lineWidth": 2 } } }
+    },
+    {
+      "id": 6, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "title": "Disk I/O — Writes / s",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(container_fs_writes_bytes_total{name=~\"docuvault.*\", image!=\"\"}[1m]))",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "lineWidth": 2 } } }
+    },
+    {
+      "id": 7, "gridPos": { "h": 5, "w": 6, "x": 0, "y": 24 },
+      "title": "Running Containers",
+      "type": "stat",
+      "targets": [{ "expr": "count(container_last_seen{name=~\"docuvault.*\", image!=\"\"})", "legendFormat": "" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": 0 }] } } }
+    },
+    {
+      "id": 8, "gridPos": { "h": 5, "w": 6, "x": 6, "y": 24 },
+      "title": "Total Memory Used",
+      "type": "stat",
+      "targets": [{ "expr": "sum(container_memory_usage_bytes{name=~\"docuvault.*\", image!=\"\"})", "legendFormat": "" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "orange", "value": 1073741824 }, { "color": "red", "value": 2147483648 }] } } }
+    }
+  ]
+}

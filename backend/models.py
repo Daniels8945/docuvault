@@ -20,6 +20,10 @@ class Organization(OrganizationBase, table=True):
 class OrganizationCreate(OrganizationBase):
     pass
 
+class OrganizationUpdate(SQLModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
 class OrganizationRead(OrganizationBase):
     id: str
     created_at: datetime
@@ -42,6 +46,10 @@ class Workspace(WorkspaceBase, table=True):
 
 class WorkspaceCreate(WorkspaceBase):
     pass
+
+class WorkspaceUpdate(SQLModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
 
 class WorkspaceRead(WorkspaceBase):
     id: str

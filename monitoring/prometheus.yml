@@ -1,0 +1,21 @@
+global:
+  scrape_interval:     15s   # how often Prometheus pulls metrics
+  evaluation_interval: 15s
+
+scrape_configs:
+
+  # DocuVault FastAPI backend — custom app metrics + HTTP instrumentator
+  - job_name: 'docuvault'
+    static_configs:
+      - targets: ['docuvault:8000']
+    metrics_path: '/metrics'
+
+  # Docker container metrics via cAdvisor (CPU, RAM, network, disk I/O)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

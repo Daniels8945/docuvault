@@ -1,10 +1,23 @@
 import React from 'react';
 
 const EmptyState = ({ icon: Icon, title, description, action }) => (
-  <div className="text-center py-20">
-    <Icon className="w-20 h-20 mx-auto text-gray-600 mb-4" />
-    <h3 className="text-xl font-semibold mb-2">{title}</h3>
-    <p className="text-gray-400 mb-6">{description}</p>
+  <div style={{
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    justifyContent: 'center', padding: '64px 24px', textAlign: 'center',
+  }}>
+    <div style={{
+      width: 56, height: 56, borderRadius: 16, marginBottom: 16,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'var(--c-surface2)', border: '1px solid var(--c-border)',
+    }}>
+      <Icon style={{ width: 24, height: 24, color: 'var(--c-text3)' }} />
+    </div>
+    <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', marginBottom: 6 }}>
+      {title}
+    </h3>
+    <p style={{ fontSize: 13, color: 'var(--c-text2)', maxWidth: 280, lineHeight: 1.5, marginBottom: action ? 20 : 0 }}>
+      {description}
+    </p>
     {action}
   </div>
 );

@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 from typing import List, Optional
 
 from database import get_session
-from models import Workspace, WorkspaceCreate, WorkspaceRead
+from models import Workspace, WorkspaceCreate, WorkspaceRead, WorkspaceUpdate
 
 router = APIRouter(prefix="/api/workspaces", tags=["Workspaces"])
 
@@ -30,6 +30,19 @@ def get_workspace(workspace_id: str, session: Session = Depends(get_session)):
     workspace = session.get(Workspace, workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
+    return workspace
+
+
+@router.patch("/{workspace_id}", response_model=WorkspaceRead)
+def update_workspace(workspace_id: str, ws_update: WorkspaceUpdate, session: Session = Depends(get_session)):
+    workspace = session.get(Workspace, workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    for key, value in ws_update.dict(exclude_unset=True).items():
+        setattr(workspace, key, value)
+    session.add(workspace)
+    session.commit()
+    session.refresh(workspace)
     return workspace
 
 
