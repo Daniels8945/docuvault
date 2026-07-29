@@ -3,10 +3,10 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
+import bcrypt as _bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlmodel import Session, select
 
 from database import get_session
@@ -17,18 +17,17 @@ SECRET_KEY      = os.getenv("JWT_SECRET", "insecure-dev-secret-change-in-product
 ALGORITHM       = "HS256"
 EXPIRE_MINUTES  = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))  # 8-hour session
 
-pwd_context   = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 # ── Password helpers ───────────────────────────────────────────────────────────
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return _bcrypt.hashpw(password.encode(), _bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return _bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
 # ── Token helpers ──────────────────────────────────────────────────────────────
