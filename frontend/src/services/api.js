@@ -6,7 +6,7 @@ const api = axios.create({ baseURL: '/api' });
 api.interceptors.response.use(
   res => res,
   err => {
-    if (err?.response?.status === 401) {
+    if (err?.response?.status === 401 && window.location.pathname !== '/login') {
       localStorage.removeItem('dv-token');
       delete axios.defaults.headers.common['Authorization'];
       window.location.href = '/login';
@@ -16,6 +16,8 @@ api.interceptors.response.use(
 );
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
+export const fetchSetupStatus = () => api.get('/auth/setup-status').then(r => r.data);
+
 export const loginUser = (email, password) => {
   const form = new URLSearchParams();
   form.append('username', email); // OAuth2PasswordRequestForm uses 'username'

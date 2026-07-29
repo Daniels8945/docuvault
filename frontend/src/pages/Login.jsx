@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
-import { loginUser, registerFirstAdmin, fetchCurrentUser } from '../services/api';
+import { loginUser, registerFirstAdmin, fetchSetupStatus } from '../services/api';
 
 const VaultIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
@@ -23,9 +23,9 @@ const Login = ({ onNeedsSetup }) => {
 
   // Check if initial setup is needed (no admin exists yet)
   useEffect(() => {
-    fetchCurrentUser().catch(err => {
-      if (err?.response?.status === 403) setMode('setup');
-    });
+    fetchSetupStatus().then(({ setup_complete }) => {
+      if (!setup_complete) setMode('setup');
+    }).catch(() => {});
   }, []);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));

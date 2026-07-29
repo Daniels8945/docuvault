@@ -1,59 +1,85 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings as SettingsIcon, Plus, Trash2, Building2, FolderOpen, MessageCircle, X } from 'lucide-react';
+import { Settings as SettingsIcon, Plus, Trash2, Building2, FolderOpen, MessageCircle, Users, X, Eye, EyeOff } from 'lucide-react';
 import {
   fetchOrganizations, createOrganization,
   fetchWorkspaces, createWorkspace, deleteWorkspace,
   fetchWhatsAppRules, deleteWhatsAppRule,
+  fetchUsers, createUser, deleteUser,
 } from '../services/api';
 import Spinner from '../components/ui/Spinner';
 
-const TABS = [
-  { id: 'orgs',       label: 'Organizations', icon: Building2     },
-  { id: 'workspaces', label: 'Workspaces',    icon: FolderOpen    },
-  { id: 'whatsapp',   label: 'Routing Rules', icon: MessageCircle },
-];
+const ROLE_LABELS = { admin: 'Admin', editor: 'Editor', viewer: 'Viewer' };
+const ROLE_COLORS = {
+  admin:  { background: 'var(--c-danger-bg)',  color: 'var(--c-danger)'      },
+  editor: { background: 'var(--c-accent-bg)',  color: 'var(--c-accent-txt)'  },
+  viewer: { background: 'var(--c-surface)',     color: 'var(--c-text2)'       },
+};
 
-const Settings = () => {
-  const [tab, setTab] = useState('orgs');
-  const [orgs, setOrgs] = useState([]);
+const Settings = ({ currentUser }) => {
+  const isAdmin = currentUser?.role === 'admin';
+
+  const TABS = [
+    { id: 'orgs',       label: 'Organizations', icon: Building2     },
+    { id: 'workspaces', label: 'Workspaces',    icon: FolderOpen    },
+    { id: 'whatsapp',   label: 'Routing Rules', icon: MessageCircle },
+    ...(isAdmin ? [{ id: 'users', label: 'Users', icon: Users }] : []),
+  ];
+
+  const [tab, setTab]           = useState('orgs');
+  const [orgs, setOrgs]         = useState([]);
   const [workspaces, setWorkspaces] = useState([]);
-  const [rules, setRules] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [rules, setRules]       = useState([]);
+  const [users, setUsers]       = useState([]);
+  const [loading, setLoading]   = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]     = useState(false);
   const [formData, setFormData] = useState({});
+  const [showPw, setShowPw]     = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [o, w, r] = await Promise.all([fetchOrganizations(), fetchWorkspaces(), fetchWhatsAppRules()]);
       setOrgs(o); setWorkspaces(w); setRules(r);
+      if (isAdmin) {
+        const u = await fetchUsers();
+        setUsers(u);
+      }
     } finally { setLoading(false); }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { document.title = 'Settings | DocuVault'; }, []);
 
+  const resetForm = () => { setShowForm(false); setFormData({}); setShowPw(false); };
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (tab === 'orgs') await createOrganization({ name: formData.name, description: formData.description });
+      if (tab === 'orgs')       await createOrganization({ name: formData.name, description: formData.description });
       if (tab === 'workspaces') await createWorkspace({ name: formData.name, organization_id: formData.org_id, description: formData.description });
-      setShowForm(false);
-      setFormData({});
+      if (tab === 'users')      await createUser({ name: formData.name, email: formData.email, password: formData.password, role: formData.role || 'viewer' });
+      resetForm();
       load();
+    } catch (err) {
+      alert(err?.response?.data?.detail || 'Save failed.');
     } finally { setSaving(false); }
   };
 
   const handleDelete = async (type, id) => {
     if (!confirm('Delete this item?')) return;
     if (type === 'workspace') await deleteWorkspace(id);
-    if (type === 'rule') await deleteWhatsAppRule(id);
+    if (type === 'rule')      await deleteWhatsAppRule(id);
+    if (type === 'user')      await deleteUser(id);
     load();
   };
 
-  const wsName = (id) => workspaces.find(w => w.id === id)?.name || id;
+  const wsName  = (id) => workspaces.find(w => w.id === id)?.name || id;
   const orgName = (id) => orgs.find(o => o.id === id)?.name || id;
+
+  const userFormValid = tab === 'users'
+    ? formData.name?.trim() && formData.email?.trim() && formData.password?.length >= 8
+    : formData.name?.trim();
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -69,7 +95,7 @@ const Settings = () => {
         <div className="flex gap-1 mb-6 p-1 rounded-xl w-fit"
           style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
           {TABS.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => { setTab(id); setShowForm(false); setFormData({}); }}
+            <button key={id} onClick={() => { setTab(id); resetForm(); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all"
               style={tab === id
                 ? { background: 'var(--c-accent-bg)', color: 'var(--c-accent-txt)', border: '1px solid var(--c-border2)' }
@@ -82,26 +108,29 @@ const Settings = () => {
 
         {loading ? <Spinner /> : (
           <div className="max-w-xl space-y-4 fade-in-up">
+
+            {/* Add button */}
             {tab !== 'whatsapp' && !showForm && (
-              <button onClick={() => { setShowForm(true); setFormData({}); }} className="btn-secondary text-xs">
+              <button onClick={() => { setShowForm(true); setFormData({ role: 'viewer' }); }} className="btn-secondary text-xs">
                 <Plus className="w-3.5 h-3.5" />
-                Add {tab === 'orgs' ? 'Organization' : 'Workspace'}
+                {tab === 'orgs' ? 'Add Organization' : tab === 'workspaces' ? 'Add Workspace' : 'Add User'}
               </button>
             )}
 
+            {/* Form */}
             {showForm && (
               <div className="rounded-xl p-5 space-y-4"
                 style={{ background: 'var(--c-surface)', border: '1px solid var(--c-accent-bg)' }}>
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>
-                    New {tab === 'orgs' ? 'Organization' : 'Workspace'}
+                    {tab === 'orgs' ? 'New Organization' : tab === 'workspaces' ? 'New Workspace' : 'New User'}
                   </p>
-                  <button onClick={() => setShowForm(false)} style={{ color: 'var(--c-text2)' }}>
-                    <X className="w-4 h-4" />
-                  </button>
+                  <button onClick={resetForm} style={{ color: 'var(--c-text2)' }}><X className="w-4 h-4" /></button>
                 </div>
-                {[
-                  { key: 'name', label: 'Name', placeholder: 'Enter name', required: true },
+
+                {/* Org / Workspace fields */}
+                {tab !== 'users' && [
+                  { key: 'name',        label: 'Name',                   placeholder: 'Enter name',        required: true },
                   { key: 'description', label: 'Description (optional)', placeholder: 'Brief description' },
                 ].map(f => (
                   <div key={f.key}>
@@ -120,11 +149,57 @@ const Settings = () => {
                     </select>
                   </div>
                 )}
+
+                {/* User fields */}
+                {tab === 'users' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--c-text2)' }}>Full Name</label>
+                      <input value={formData.name || ''} onChange={e => setFormData(p => ({ ...p, name: e.target.value }))}
+                        placeholder="Jane Smith" className="input-field w-full" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--c-text2)' }}>Email Address</label>
+                      <input type="email" value={formData.email || ''} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))}
+                        placeholder="jane@onctionenergy.com" className="input-field w-full" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--c-text2)' }}>Password</label>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type={showPw ? 'text' : 'password'}
+                          value={formData.password || ''}
+                          onChange={e => setFormData(p => ({ ...p, password: e.target.value }))}
+                          placeholder="Min. 8 characters"
+                          className="input-field w-full"
+                          style={{ paddingRight: 36 }}
+                        />
+                        <button type="button" onClick={() => setShowPw(p => !p)}
+                          style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-text2)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                          {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      {formData.password && formData.password.length < 8 && (
+                        <p className="text-xs mt-1" style={{ color: 'var(--c-danger)' }}>At least 8 characters required</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--c-text2)' }}>Role</label>
+                      <select value={formData.role || 'viewer'} onChange={e => setFormData(p => ({ ...p, role: e.target.value }))}
+                        className="input-field w-full">
+                        <option value="viewer">Viewer — can browse and download documents</option>
+                        <option value="editor">Editor — can upload and manage documents</option>
+                        <option value="admin">Admin — full access including user management</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+
                 <div className="flex gap-2 pt-1">
-                  <button onClick={handleSave} disabled={!formData.name?.trim() || saving} className="btn-primary text-xs disabled:opacity-40">
+                  <button onClick={handleSave} disabled={!userFormValid || saving} className="btn-primary text-xs disabled:opacity-40">
                     {saving ? 'Saving…' : 'Save'}
                   </button>
-                  <button onClick={() => setShowForm(false)} className="btn-secondary text-xs">Cancel</button>
+                  <button onClick={resetForm} className="btn-secondary text-xs">Cancel</button>
                 </div>
               </div>
             )}
@@ -176,7 +251,7 @@ const Settings = () => {
               </div>
             )}
 
-            {/* WhatsApp rules */}
+            {/* WhatsApp routing rules */}
             {tab === 'whatsapp' && (
               rules.length === 0 ? (
                 <div className="rounded-xl p-5" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
@@ -207,6 +282,45 @@ const Settings = () => {
                 </div>
               )
             )}
+
+            {/* Users list (admin only) */}
+            {tab === 'users' && (
+              <div className="rounded-xl overflow-hidden"
+                style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
+                {users.length === 0 ? (
+                  <p className="text-xs p-5" style={{ color: 'var(--c-text2)' }}>No users found.</p>
+                ) : users.map((u, i) => (
+                  <div key={u.id} className="flex items-center gap-4 px-5 py-4"
+                    style={i < users.length - 1 ? { borderBottom: '1px solid var(--c-border)' } : {}}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                      background: 'var(--c-accent-bg)', color: 'var(--c-accent-txt)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 13, fontWeight: 700,
+                    }}>
+                      {u.name?.charAt(0)?.toUpperCase() || '?'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium" style={{ color: 'var(--c-text)' }}>{u.name}</p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--c-text2)' }}>{u.email}</p>
+                    </div>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
+                      style={ROLE_COLORS[u.role] || ROLE_COLORS.viewer}>
+                      {ROLE_LABELS[u.role] || u.role}
+                    </span>
+                    {u.id !== currentUser?.id && (
+                      <button onClick={() => handleDelete('user', u.id)}
+                        className="p-1 transition-colors" style={{ color: 'var(--c-text2)' }}
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--c-danger)'}
+                        onMouseLeave={e => e.currentTarget.style.color = 'var(--c-text2)'}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
           </div>
         )}
       </div>

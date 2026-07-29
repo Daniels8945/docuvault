@@ -21,6 +21,16 @@ log = logging.getLogger("docuvault.users")
 router = APIRouter(prefix="/api", tags=["Auth & Users"])
 
 
+# ── Setup status (public) ──────────────────────────────────────────────────────
+
+@router.get("/auth/setup-status", summary="Check whether initial admin setup is needed")
+def setup_status(session: Session = Depends(get_session)):
+    has_auth_user = session.exec(
+        select(User).where(User.hashed_password.is_not(None))
+    ).first()
+    return {"setup_complete": bool(has_auth_user)}
+
+
 # ── Register first admin ────────────────────────────────────────────────────────
 
 @router.post("/auth/register", response_model=UserRead, summary="Create the initial admin account")
