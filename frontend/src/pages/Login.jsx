@@ -12,20 +12,29 @@ const VaultIcon = () => (
   </svg>
 );
 
-const Login = ({ onNeedsSetup }) => {
-  const { login } = useAuth();
-  const navigate  = useNavigate();
+// Flatten FastAPI validation errors (detail can be a string or array of objects)
+const formatError = (err) => {
+  const detail = err?.response?.data?.detail;
+  if (!detail) return 'Request failed — check your connection and try again.';
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) return detail.map(d => d.msg || JSON.stringify(d)).join('; ');
+  return JSON.stringify(detail);
+};
 
-  const [mode, setMode]   = useState('login'); // 'login' | 'setup'
-  const [form, setForm]   = useState({ name: '', email: '', password: '' });
-  const [error, setError] = useState('');
+const Login = () => {
+  const { login } = useAuth();
+  const navigate   = useNavigate();
+
+  // 'checking' while we probe setup status, then 'setup' or 'login'
+  const [mode, setMode]       = useState('checking');
+  const [form, setForm]       = useState({ name: '', email: '', password: '' });
+  const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Check if initial setup is needed (no admin exists yet)
   useEffect(() => {
-    fetchSetupStatus().then(({ setup_complete }) => {
-      if (!setup_complete) setMode('setup');
-    }).catch(() => {});
+    fetchSetupStatus()
+      .then(({ setup_complete }) => setMode(setup_complete ? 'login' : 'setup'))
+      .catch(() => setMode('login')); // endpoint missing or network error → show login
   }, []);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -35,25 +44,31 @@ const Login = ({ onNeedsSetup }) => {
     setError('');
     setLoading(true);
     try {
-      let token, user;
       if (mode === 'setup') {
-        user = await registerFirstAdmin({ name: form.name, email: form.email, password: form.password });
-        const res = await loginUser(form.email, form.password);
-        token = res.access_token;
-        user  = res.user;
-      } else {
-        const res = await loginUser(form.email, form.password);
-        token = res.access_token;
-        user  = res.user;
+        await registerFirstAdmin({ name: form.name, email: form.email, password: form.password });
       }
-      login(token, user);
+      const res   = await loginUser(form.email, form.password);
+      login(res.access_token, res.user);
       navigate('/', { replace: true });
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Login failed — check your credentials.');
+      setError(formatError(err));
     } finally {
       setLoading(false);
     }
   };
+
+  if (mode === 'checking') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--c-accent-bg)', color: 'var(--c-accent-txt)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <VaultIcon />
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--c-text2)' }}>Loading…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -69,14 +84,9 @@ const Login = ({ onNeedsSetup }) => {
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 52, height: 52,
-            borderRadius: 14,
-            background: 'var(--c-accent-bg)',
-            color: 'var(--c-accent-txt)',
-            marginBottom: 14,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 52, height: 52, borderRadius: 14,
+            background: 'var(--c-accent-bg)', color: 'var(--c-accent-txt)', marginBottom: 14,
           }}>
             <VaultIcon />
           </div>
@@ -103,7 +113,7 @@ const Login = ({ onNeedsSetup }) => {
                   type="text"
                   value={form.name}
                   onChange={e => set('name', e.target.value)}
-                  placeholder="Olaoluwa Adesanya"
+                  placeholder="Your full name"
                   required
                   className="input-field"
                   style={{ width: '100%' }}
@@ -150,6 +160,7 @@ const Login = ({ onNeedsSetup }) => {
                 padding: '10px 14px',
                 fontSize: 13,
                 color: 'var(--c-danger)',
+                wordBreak: 'break-word',
               }}>
                 {error}
               </div>
@@ -159,16 +170,9 @@ const Login = ({ onNeedsSetup }) => {
               type="submit"
               disabled={loading}
               style={{
-                background: 'var(--c-accent)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
-                padding: '11px 0',
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.7 : 1,
-                marginTop: 4,
+                background: 'var(--c-accent)', color: '#fff', border: 'none',
+                borderRadius: 8, padding: '11px 0', fontSize: 14, fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, marginTop: 4,
               }}
             >
               {loading
@@ -179,10 +183,30 @@ const Login = ({ onNeedsSetup }) => {
           </form>
         </div>
 
+        {/* Mode toggle */}
+        <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--c-text2)', marginTop: 16 }}>
+          {mode === 'setup' ? (
+            <>
+              Already have an account?{' '}
+              <button onClick={() => { setMode('login'); setError(''); }}
+                style={{ color: 'var(--c-accent-txt)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                Sign in instead
+              </button>
+            </>
+          ) : (
+            <>
+              First time here?{' '}
+              <button onClick={() => { setMode('setup'); setError(''); }}
+                style={{ color: 'var(--c-accent-txt)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                Set up admin account
+              </button>
+            </>
+          )}
+        </p>
+
         {mode === 'setup' && (
-          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--c-text2)', marginTop: 16 }}>
-            This account will be the system administrator.<br />
-            Additional users can be created from Settings.
+          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--c-text2)', marginTop: 8 }}>
+            This account will be the system administrator.
           </p>
         )}
 
