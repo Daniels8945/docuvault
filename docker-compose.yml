@@ -40,6 +40,19 @@ services:
       postgres:
         condition: service_healthy
 
+  # ── Cache / state ────────────────────────────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ── WhatsApp ────────────────────────────────────────────────────────────────
 
   waha:
@@ -80,10 +93,14 @@ services:
       WAHA_API_KEY:    ${WAHA_API_KEY}
       WAHA_BASE_URL:   http://waha:3000
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
+      JWT_SECRET:      ${JWT_SECRET}
+      REDIS_URL:       redis://redis:6379
     ports:
       - "8000:8000"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
@@ -102,6 +119,35 @@ services:
     depends_on:
       docuvault:
         condition: service_healthy
+
+  # ── S3 object backup ─────────────────────────────────────────────────────────
+  # Syncs the Contabo bucket to a local copy daily. Files kept 30 days.
+  # Set S3_BACKUP_* env vars in .env to enable; service is a no-op without them.
+
+  s3-backup:
+    image: rclone/rclone:latest
+    restart: unless-stopped
+    environment:
+      RCLONE_CONFIG_CONTABO_TYPE:              s3
+      RCLONE_CONFIG_CONTABO_PROVIDER:          Other
+      RCLONE_CONFIG_CONTABO_ENV_AUTH:          "false"
+      RCLONE_CONFIG_CONTABO_ACCESS_KEY_ID:     ${S3_ACCESS_KEY}
+      RCLONE_CONFIG_CONTABO_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      RCLONE_CONFIG_CONTABO_ENDPOINT:          https://eu2.contabostorage.com
+      RCLONE_CONFIG_CONTABO_REGION:            eu2
+    volumes:
+      - ./s3-backups:/s3-backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          echo "[s3-backup] Starting sync at $$(date)"
+          rclone sync contabo:${S3_BUCKET:-docuvualt} /s3-backups \
+            --log-level INFO \
+            && echo "[s3-backup] Sync complete"
+          find /s3-backups -type f -mtime +30 -delete
+          sleep 86400
+        done
 
   # ── Monitoring stack ────────────────────────────────────────────────────────
 
@@ -139,10 +185,17 @@ services:
     image: grafana/grafana:11.1.0
     restart: unless-stopped
     environment:
-      GF_SECURITY_ADMIN_USER:     ${GRAFANA_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-docuvault}
-      GF_USERS_ALLOW_SIGN_UP:     "false"
-      GF_SERVER_ROOT_URL:         "http://localhost:3001"
+      GF_SECURITY_ADMIN_USER:          ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD:      ${GRAFANA_PASSWORD:-docuvault}
+      GF_USERS_ALLOW_SIGN_UP:          "false"
+      GF_SERVER_ROOT_URL:              "http://localhost:3001"
+      # SMTP alerting — fill these in .env to enable email alerts
+      GF_SMTP_ENABLED:                 ${GF_SMTP_ENABLED:-false}
+      GF_SMTP_HOST:                    ${GF_SMTP_HOST:-smtp.gmail.com:465}
+      GF_SMTP_USER:                    ${GF_SMTP_USER:-}
+      GF_SMTP_PASSWORD:                ${GF_SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS:            ${GF_SMTP_FROM_ADDRESS:-alerts@docuvault}
+      GF_SMTP_FROM_NAME:               "DocuVault Alerts"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -154,6 +207,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   waha_sessions:
   prometheus_data:
   grafana_data:

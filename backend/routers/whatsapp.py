@@ -2,21 +2,22 @@ import logging
 import os
 import time
 import uuid
-from collections import defaultdict
 from typing import List
 
 import httpx
+import redis
 from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlmodel import Session, select
 
 import storage
+from auth import get_current_user, require_admin
 from database import get_session
 from metrics import (
     WHATSAPP_MESSAGES, WHATSAPP_DUPLICATES,
     DOCUMENTS_UPLOADED, UPLOAD_FAILURES, S3_OPERATION_SECONDS,
 )
 from models import (
-    Document, DocumentVersion,
+    Document, DocumentVersion, User,
     WhatsAppGroupRule, WhatsAppGroupRuleCreate, WhatsAppGroupRuleRead,
 )
 
@@ -24,6 +25,7 @@ log = logging.getLogger("docuvault.whatsapp")
 
 WAHA_API_KEY  = os.getenv("WAHA_API_KEY", "")
 WAHA_BASE_URL = os.getenv("WAHA_BASE_URL", "http://localhost:3000")
+MAX_WHATSAPP_BYTES = 50 * 1024 * 1024  # 50 MB — same limit as manual upload
 
 router = APIRouter(tags=["WhatsApp"])
 
@@ -42,14 +44,35 @@ _MIME_TO_EXT = {
 
 ALLOWED_MIMETYPES = set(_MIME_TO_EXT.keys())
 
-# ── In-memory rate limiter (per source IP) ─────────────────────────────────────
+# ── Redis client (with graceful fallback to in-memory if Redis unavailable) ────
 
-_wh_hits: dict[str, list] = defaultdict(list)
+_redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
 _WH_WINDOW = 60
 _WH_LIMIT  = 120
+_DEDUP_TTL = 3600
+
+try:
+    _redis = redis.from_url(_redis_url, decode_responses=True, socket_connect_timeout=2)
+    _redis.ping()
+    _use_redis = True
+    log.info("WhatsApp: Redis connected for rate limiting and deduplication")
+except Exception as exc:
+    log.warning("WhatsApp: Redis unavailable (%s) — falling back to in-memory state", exc)
+    _use_redis = False
+    from collections import defaultdict as _dd
+    _wh_hits: dict = _dd(list)
+    _processed_ids: dict = {}
 
 
 def _is_rate_limited(ip: str) -> bool:
+    if _use_redis:
+        key = f"ratelimit:{ip}"
+        pipe = _redis.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, _WH_WINDOW)
+        count = pipe.execute()[0]
+        return count > _WH_LIMIT
+    # In-memory fallback
     now = time.monotonic()
     cutoff = now - _WH_WINDOW
     recent = [t for t in _wh_hits[ip] if t > cutoff]
@@ -60,16 +83,13 @@ def _is_rate_limited(ip: str) -> bool:
     return False
 
 
-# ── Message deduplication (in-memory, 1-hour TTL) ─────────────────────────────
-# Prevents double-save when WAHA retries a webhook delivery.
-
-_processed_ids: dict[str, float] = {}
-_DEDUP_TTL = 3600  # seconds
-
-
 def _is_duplicate(msg_id: str) -> bool:
+    if _use_redis:
+        # SET NX (only set if not exists) with TTL — returns True if key was new
+        result = _redis.set(f"dedup:{msg_id}", 1, ex=_DEDUP_TTL, nx=True)
+        return result is None  # None = key already existed → duplicate
+    # In-memory fallback
     now = time.monotonic()
-    # Evict stale entries
     stale = [k for k, ts in _processed_ids.items() if now - ts > _DEDUP_TTL]
     for k in stale:
         del _processed_ids[k]
@@ -84,15 +104,22 @@ def _guess_filename(mimetype: str, msg_id: str) -> str:
     return f"whatsapp_{msg_id[:8]}{ext}"
 
 
-# ── Group routing rules ────────────────────────────────────────────────────────
+# ── Group routing rules (protected) ───────────────────────────────────────────
 
 @router.get("/api/whatsapp/rules", response_model=List[WhatsAppGroupRuleRead])
-def get_group_rules(session: Session = Depends(get_session)):
+def get_group_rules(
+    session: Session = Depends(get_session),
+    _user: User = Depends(get_current_user),
+):
     return session.exec(select(WhatsAppGroupRule)).all()
 
 
 @router.post("/api/whatsapp/rules", response_model=WhatsAppGroupRuleRead)
-def create_group_rule(rule: WhatsAppGroupRuleCreate, session: Session = Depends(get_session)):
+def create_group_rule(
+    rule: WhatsAppGroupRuleCreate,
+    session: Session = Depends(get_session),
+    _editor: User = Depends(get_current_user),
+):
     db_rule = WhatsAppGroupRule(**rule.dict())
     session.add(db_rule)
     session.commit()
@@ -101,7 +128,11 @@ def create_group_rule(rule: WhatsAppGroupRuleCreate, session: Session = Depends(
 
 
 @router.delete("/api/whatsapp/rules/{rule_id}")
-def delete_group_rule(rule_id: str, session: Session = Depends(get_session)):
+def delete_group_rule(
+    rule_id: str,
+    session: Session = Depends(get_session),
+    _editor: User = Depends(get_current_user),
+):
     rule = session.get(WhatsAppGroupRule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
@@ -110,14 +141,10 @@ def delete_group_rule(rule_id: str, session: Session = Depends(get_session)):
     return {"message": "Rule deleted"}
 
 
-# ── WhatsApp health ────────────────────────────────────────────────────────────
+# ── WhatsApp health (protected) ────────────────────────────────────────────────
 
 @router.get("/api/whatsapp/health")
-async def whatsapp_health():
-    """
-    Live connectivity check against WAHA. Returns session list and status.
-    Used by monitoring dashboards and manual troubleshooting.
-    """
+async def whatsapp_health(_user: User = Depends(get_current_user)):
     headers = {"X-Api-Key": WAHA_API_KEY} if WAHA_API_KEY else {}
     try:
         async with httpx.AsyncClient(timeout=5) as client:
@@ -135,7 +162,7 @@ async def whatsapp_health():
         return {"status": "unreachable", "error": str(exc), "sessions": []}
 
 
-# ── Incoming webhook ───────────────────────────────────────────────────────────
+# ── Incoming webhook (public — called by WAHA, not by users) ──────────────────
 
 @router.post("/webhook/waha")
 async def waha_webhook(request: Request, session: Session = Depends(get_session)):
@@ -162,7 +189,6 @@ async def waha_webhook(request: Request, session: Session = Depends(get_session)
     media    = msg.get("media") or {}
     msg_id   = msg.get("id", uuid.uuid4().hex)
 
-    # Deduplication — reject if we already processed this message ID
     if _is_duplicate(msg_id):
         log.warning("Duplicate webhook msg_id=%s from=%s — skipping", msg_id, from_jid)
         WHATSAPP_DUPLICATES.inc()
@@ -198,6 +224,19 @@ async def waha_webhook(request: Request, session: Session = Depends(get_session)
         if "filename=" in content_disp:
             filename = content_disp.split("filename=")[-1].strip('"').strip("'")
 
+    # File size guard — reject oversized attachments
+    if len(file_bytes) > MAX_WHATSAPP_BYTES:
+        log.warning(
+            "WhatsApp file too large: size=%d  from=%s  filename=%s",
+            len(file_bytes), from_jid, filename,
+        )
+        WHATSAPP_MESSAGES.labels(status="skipped").inc()
+        return {
+            "status": "skipped_too_large",
+            "size_mb": round(len(file_bytes) / 1024 / 1024, 1),
+            "limit_mb": MAX_WHATSAPP_BYTES // 1024 // 1024,
+        }
+
     rule = session.exec(
         select(WhatsAppGroupRule).where(WhatsAppGroupRule.group_jid == from_jid)
     ).first()
@@ -207,7 +246,6 @@ async def waha_webhook(request: Request, session: Session = Depends(get_session)
 
     file_key = f"{workspace_id}/{uuid.uuid4().hex}/{filename}"
 
-    # Upload to S3 — timed for Prometheus
     t0 = time.perf_counter()
     try:
         storage.upload_file(file_bytes, file_key, content_type)

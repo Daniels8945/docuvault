@@ -37,6 +37,10 @@ env/
 uploads/*
 !uploads/.gitkeep
 
+# S3 backup sync output (keep placeholder only)
+s3-backups/*
+!s3-backups/.gitkeep
+
 # IDE
 .vscode/
 .idea/

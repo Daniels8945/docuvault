@@ -2,6 +2,32 @@ import axios from 'axios';
 
 const api = axios.create({ baseURL: '/api' });
 
+// ── 401 interceptor — redirect to /login when token expires ───────────────────
+api.interceptors.response.use(
+  res => res,
+  err => {
+    if (err?.response?.status === 401) {
+      localStorage.removeItem('dv-token');
+      delete axios.defaults.headers.common['Authorization'];
+      window.location.href = '/login';
+    }
+    return Promise.reject(err);
+  },
+);
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
+export const loginUser = (email, password) => {
+  const form = new URLSearchParams();
+  form.append('username', email); // OAuth2PasswordRequestForm uses 'username'
+  form.append('password', password);
+  return api.post('/auth/login', form, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  }).then(r => r.data);
+};
+
+export const registerFirstAdmin = (data) =>
+  api.post('/auth/register', data).then(r => r.data);
+
 // ── Organizations ──────────────────────────────────────────────────────────────
 export const fetchOrganizations  = ()         => api.get('/organizations').then(r => r.data);
 export const createOrganization  = (data)     => api.post('/organizations', data).then(r => r.data);
@@ -30,13 +56,15 @@ export const uploadDocument = (file, metadata) => {
   const form = new FormData();
   form.append('file', file);
   Object.entries(metadata).forEach(([k, v]) => { if (v != null) form.append(k, v); });
-  return api.post('/documents/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data);
+  return api.post('/documents/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data);
 };
 
-export const updateDocument  = (id, data) => api.put(`/documents/${id}`, data).then(r => r.data);
-export const deleteDocument  = (id)       => api.delete(`/documents/${id}`).then(r => r.data);
-export const downloadDocument = (id)      => `/api/documents/${id}/download`;
-export const previewDocument  = (id)      => `/api/documents/${id}/preview`;
+export const updateDocument   = (id, data) => api.put(`/documents/${id}`, data).then(r => r.data);
+export const deleteDocument   = (id)       => api.delete(`/documents/${id}`).then(r => r.data);
+export const downloadDocument = (id)       => `/api/documents/${id}/download`;
+export const previewDocument  = (id)       => `/api/documents/${id}/preview`;
 
 // ── Versions ───────────────────────────────────────────────────────────────────
 export const fetchDocumentVersions = (id) =>
@@ -52,6 +80,9 @@ export const uploadNewVersion = (documentId, file) => {
 
 // ── Users ──────────────────────────────────────────────────────────────────────
 export const fetchCurrentUser = () => api.get('/users/me').then(r => r.data);
+export const fetchUsers       = () => api.get('/users').then(r => r.data);
+export const createUser       = (data) => api.post('/users', data).then(r => r.data);
+export const deleteUser       = (id)   => api.delete(`/users/${id}`).then(r => r.data);
 
 // ── WhatsApp Rules ─────────────────────────────────────────────────────────────
 export const fetchWhatsAppRules  = ()       => api.get('/whatsapp/rules').then(r => r.data);

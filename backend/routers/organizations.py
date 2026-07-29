@@ -3,22 +3,30 @@ from sqlmodel import Session, select
 from typing import List
 
 import storage
+from auth import get_current_user, require_admin, require_editor
 from database import get_session
 from models import (
     Organization, OrganizationCreate, OrganizationRead, OrganizationUpdate,
-    Workspace, Folder, Document, DocumentVersion, Approval, WhatsAppGroupRule,
+    Workspace, Folder, Document, DocumentVersion, Approval, WhatsAppGroupRule, User,
 )
 
 router = APIRouter(prefix="/api/organizations", tags=["Organizations"])
 
 
 @router.get("", response_model=List[OrganizationRead])
-def get_organizations(session: Session = Depends(get_session)):
+def get_organizations(
+    session: Session = Depends(get_session),
+    _user: User = Depends(get_current_user),
+):
     return session.exec(select(Organization)).all()
 
 
 @router.post("", response_model=OrganizationRead)
-def create_organization(org: OrganizationCreate, session: Session = Depends(get_session)):
+def create_organization(
+    org: OrganizationCreate,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+):
     db_org = Organization.from_orm(org)
     session.add(db_org)
     session.commit()
@@ -27,7 +35,11 @@ def create_organization(org: OrganizationCreate, session: Session = Depends(get_
 
 
 @router.get("/{org_id}", response_model=OrganizationRead)
-def get_organization(org_id: str, session: Session = Depends(get_session)):
+def get_organization(
+    org_id: str,
+    session: Session = Depends(get_session),
+    _user: User = Depends(get_current_user),
+):
     org = session.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -35,7 +47,12 @@ def get_organization(org_id: str, session: Session = Depends(get_session)):
 
 
 @router.patch("/{org_id}", response_model=OrganizationRead)
-def update_organization(org_id: str, org_update: OrganizationUpdate, session: Session = Depends(get_session)):
+def update_organization(
+    org_id: str,
+    org_update: OrganizationUpdate,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+):
     org = session.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -48,7 +65,11 @@ def update_organization(org_id: str, org_update: OrganizationUpdate, session: Se
 
 
 @router.delete("/{org_id}")
-def delete_organization(org_id: str, session: Session = Depends(get_session)):
+def delete_organization(
+    org_id: str,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+):
     org = session.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -56,13 +77,11 @@ def delete_organization(org_id: str, session: Session = Depends(get_session)):
     workspaces = session.exec(select(Workspace).where(Workspace.organization_id == org_id)).all()
 
     for ws in workspaces:
-        # Remove routing rules pointing to this workspace
         for rule in session.exec(
             select(WhatsAppGroupRule).where(WhatsAppGroupRule.workspace_id == ws.id)
         ).all():
             session.delete(rule)
 
-        # Cascade-delete every document (versions + approvals + object storage)
         for doc in session.exec(
             select(Document).where(Document.workspace_id == ws.id)
         ).all():
@@ -80,7 +99,6 @@ def delete_organization(org_id: str, session: Session = Depends(get_session)):
                 pass
             session.delete(doc)
 
-        # Delete folders
         for folder in session.exec(
             select(Folder).where(Folder.workspace_id == ws.id)
         ).all():
@@ -90,5 +108,4 @@ def delete_organization(org_id: str, session: Session = Depends(get_session)):
 
     session.delete(org)
     session.commit()
-    ws_count = len(workspaces)
-    return {"message": f"Organization deleted along with {ws_count} workspace(s)"}
+    return {"message": f"Organization deleted along with {len(workspaces)} workspace(s)"}

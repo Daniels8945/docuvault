@@ -2,14 +2,19 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select
 from typing import List, Optional
 
+from auth import get_current_user, require_admin, require_editor
 from database import get_session
-from models import Workspace, WorkspaceCreate, WorkspaceRead, WorkspaceUpdate
+from models import Workspace, WorkspaceCreate, WorkspaceRead, WorkspaceUpdate, User
 
 router = APIRouter(prefix="/api/workspaces", tags=["Workspaces"])
 
 
 @router.get("", response_model=List[WorkspaceRead])
-def get_workspaces(org_id: Optional[str] = None, session: Session = Depends(get_session)):
+def get_workspaces(
+    org_id: Optional[str] = None,
+    session: Session = Depends(get_session),
+    _user: User = Depends(get_current_user),
+):
     query = select(Workspace)
     if org_id:
         query = query.where(Workspace.organization_id == org_id)
@@ -17,7 +22,11 @@ def get_workspaces(org_id: Optional[str] = None, session: Session = Depends(get_
 
 
 @router.post("", response_model=WorkspaceRead)
-def create_workspace(workspace: WorkspaceCreate, session: Session = Depends(get_session)):
+def create_workspace(
+    workspace: WorkspaceCreate,
+    session: Session = Depends(get_session),
+    _editor: User = Depends(require_editor),
+):
     db_workspace = Workspace.from_orm(workspace)
     session.add(db_workspace)
     session.commit()
@@ -26,7 +35,11 @@ def create_workspace(workspace: WorkspaceCreate, session: Session = Depends(get_
 
 
 @router.get("/{workspace_id}", response_model=WorkspaceRead)
-def get_workspace(workspace_id: str, session: Session = Depends(get_session)):
+def get_workspace(
+    workspace_id: str,
+    session: Session = Depends(get_session),
+    _user: User = Depends(get_current_user),
+):
     workspace = session.get(Workspace, workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -34,7 +47,12 @@ def get_workspace(workspace_id: str, session: Session = Depends(get_session)):
 
 
 @router.patch("/{workspace_id}", response_model=WorkspaceRead)
-def update_workspace(workspace_id: str, ws_update: WorkspaceUpdate, session: Session = Depends(get_session)):
+def update_workspace(
+    workspace_id: str,
+    ws_update: WorkspaceUpdate,
+    session: Session = Depends(get_session),
+    _editor: User = Depends(require_editor),
+):
     workspace = session.get(Workspace, workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -47,7 +65,11 @@ def update_workspace(workspace_id: str, ws_update: WorkspaceUpdate, session: Ses
 
 
 @router.delete("/{workspace_id}")
-def delete_workspace(workspace_id: str, session: Session = Depends(get_session)):
+def delete_workspace(
+    workspace_id: str,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+):
     workspace = session.get(Workspace, workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")

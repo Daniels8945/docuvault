@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Recent from './pages/Recent';
 import WhatsAppInbox from './pages/WhatsAppInbox';
+import Approvals from './pages/Approvals';
 import Settings from './pages/Settings';
+import Login from './pages/Login';
 import Spinner from './components/ui/Spinner';
+import { useAuth } from './lib/AuthContext';
 import { fetchCurrentUser, fetchOrganizations, fetchWorkspaces } from './services/api';
 
 const VaultLogo = () => (
@@ -16,23 +19,29 @@ const VaultLogo = () => (
   </svg>
 );
 
-const App = () => {
-  const [currentUser, setCurrentUser]     = useState(null);
+// ── Authenticated shell ────────────────────────────────────────────────────────
+
+const AppShell = () => {
+  const { user, setUser, logout } = useAuth();
   const [organizations, setOrganizations] = useState([]);
   const [workspaces, setWorkspaces]       = useState([]);
   const [selectedOrg, setSelectedOrg]     = useState(null);
   const [selectedWorkspace, setSelectedWorkspace] = useState(null);
-  const [loading, setLoading]             = useState(true);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     Promise.all([fetchCurrentUser(), fetchOrganizations()])
-      .then(([user, orgs]) => {
-        setCurrentUser(user);
+      .then(([u, orgs]) => {
+        setUser(u);
         setOrganizations(orgs);
         if (orgs.length) setSelectedOrg(orgs[0].id);
       })
+      .catch(() => {
+        // JWT rejected — AuthContext interceptor handles redirect to /login
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [setUser]);
 
   useEffect(() => {
     if (!selectedOrg) { setWorkspaces([]); setSelectedWorkspace(null); return; }
@@ -44,7 +53,7 @@ const App = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOrg]);
 
-  // ── Org CRUD callbacks ────────────────────────────────────────────────────
+  // ── Org CRUD callbacks ──────────────────────────────────────────────────────
   const handleOrgCreated = useCallback((org) => {
     setOrganizations(prev => [...prev, org]);
     setSelectedOrg(org.id);
@@ -68,7 +77,7 @@ const App = () => {
     setOrganizations(prev => prev.map(o => o.id === orgId ? { ...o, name } : o));
   }, []);
 
-  // ── Workspace CRUD callbacks ──────────────────────────────────────────────
+  // ── Workspace CRUD callbacks ────────────────────────────────────────────────
   const handleWorkspaceCreated = useCallback((ws) => {
     setWorkspaces(prev => [...prev, ws]);
     setSelectedWorkspace(ws.id);
@@ -104,34 +113,80 @@ const App = () => {
   }
 
   return (
-    <Router>
-      <div className="flex" style={{ minHeight: '100vh' }}>
-        <Sidebar
-          currentUser={currentUser}
-          organizations={organizations}
-          workspaces={workspaces}
-          selectedOrg={selectedOrg}
-          selectedWorkspace={selectedWorkspace}
-          onSelectOrg={(id) => { setSelectedOrg(id); setSelectedWorkspace(null); }}
-          onSelectWorkspace={setSelectedWorkspace}
-          onOrgCreated={handleOrgCreated}
-          onOrgDeleted={handleOrgDeleted}
-          onOrgRenamed={handleOrgRenamed}
-          onWorkspaceCreated={handleWorkspaceCreated}
-          onWorkspaceDeleted={handleWorkspaceDeleted}
-          onWorkspaceRenamed={handleWorkspaceRenamed}
-        />
-        <main className="flex-1 min-w-0">
-          <Routes>
-            <Route path="/"         element={<Dashboard selectedWorkspace={selectedWorkspace} currentUser={currentUser} />} />
-            <Route path="/inbox"    element={<WhatsAppInbox currentUser={currentUser} />} />
-            <Route path="/recent"   element={<Recent selectedWorkspace={selectedWorkspace} currentUser={currentUser} />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </main>
-      </div>
-    </Router>
+    <div className="flex" style={{ minHeight: '100vh' }}>
+      <Sidebar
+        currentUser={user}
+        organizations={organizations}
+        workspaces={workspaces}
+        selectedOrg={selectedOrg}
+        selectedWorkspace={selectedWorkspace}
+        onSelectOrg={(id) => { setSelectedOrg(id); setSelectedWorkspace(null); }}
+        onSelectWorkspace={setSelectedWorkspace}
+        onOrgCreated={handleOrgCreated}
+        onOrgDeleted={handleOrgDeleted}
+        onOrgRenamed={handleOrgRenamed}
+        onWorkspaceCreated={handleWorkspaceCreated}
+        onWorkspaceDeleted={handleWorkspaceDeleted}
+        onWorkspaceRenamed={handleWorkspaceRenamed}
+        onLogout={logout}
+      />
+      <main className="flex-1 min-w-0">
+        <Routes>
+          <Route path="/"           element={<Dashboard selectedWorkspace={selectedWorkspace} currentUser={user} />} />
+          <Route path="/inbox"      element={<WhatsAppInbox currentUser={user} />} />
+          <Route path="/recent"     element={<Recent selectedWorkspace={selectedWorkspace} currentUser={user} />} />
+          <Route path="/approvals"  element={<Approvals currentUser={user} />} />
+          <Route path="/settings"   element={<Settings currentUser={user} />} />
+          <Route path="*"           element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+    </div>
   );
 };
+
+// ── Root — handles auth gating before router even renders shell ────────────────
+
+const AuthGate = () => {
+  const { token } = useAuth();
+  const [checking, setChecking]   = useState(true);
+  const [authed, setAuthed]       = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false);
+
+  useEffect(() => {
+    if (!token) { setChecking(false); return; }
+    fetchCurrentUser()
+      .then(() => { setAuthed(true); })
+      .catch(err => {
+        if (err?.response?.status === 403) setNeedsSetup(true);
+        // 401 = token invalid; just show login
+      })
+      .finally(() => setChecking(false));
+  }, [token]);
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--c-bg)' }}>
+        <Spinner />
+      </div>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      {(authed || token) ? (
+        <Route path="/*" element={<AppShell />} />
+      ) : (
+        <Route path="/*" element={<Navigate to="/login" replace />} />
+      )}
+    </Routes>
+  );
+};
+
+const App = () => (
+  <Router>
+    <AuthGate />
+  </Router>
+);
 
 export default App;

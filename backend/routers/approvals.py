@@ -4,8 +4,9 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select
 
+from auth import get_current_user, require_admin
 from database import get_session
-from models import Approval, ApprovalCreate, ApprovalRead, ApprovalUpdate, Document
+from models import Approval, ApprovalCreate, ApprovalRead, ApprovalUpdate, Document, User
 
 router = APIRouter(prefix="/api/approvals", tags=["Approvals"])
 
@@ -15,6 +16,7 @@ def get_approvals(
     document_id: Optional[str] = None,
     status: Optional[str] = None,
     session: Session = Depends(get_session),
+    _user: User = Depends(get_current_user),
 ):
     query = select(Approval)
     if document_id:
@@ -25,12 +27,20 @@ def get_approvals(
 
 
 @router.post("", response_model=ApprovalRead)
-def create_approval(approval: ApprovalCreate, session: Session = Depends(get_session)):
+def create_approval(
+    approval: ApprovalCreate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
     document = session.get(Document, approval.document_id)
     if document:
         document.status = "pending_approval"
         session.add(document)
-    db_approval = Approval.from_orm(approval)
+
+    # Stamp submitted_by with the authenticated user
+    data = approval.dict()
+    data["submitted_by"] = current_user.id
+    db_approval = Approval(**data)
     session.add(db_approval)
     session.commit()
     session.refresh(db_approval)
@@ -42,6 +52,7 @@ def update_approval(
     approval_id: str,
     approval_update: ApprovalUpdate,
     session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin),
 ):
     approval = session.get(Approval, approval_id)
     if not approval:
@@ -49,6 +60,7 @@ def update_approval(
 
     for key, value in approval_update.dict(exclude_unset=True).items():
         setattr(approval, key, value)
+    approval.reviewed_by = current_user.id
     approval.reviewed_at = datetime.utcnow()
 
     document = session.get(Document, approval.document_id)

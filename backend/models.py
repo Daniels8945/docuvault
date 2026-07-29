@@ -205,7 +205,14 @@ class UserBase(SQLModel):
 
 class User(UserBase, table=True):
     id: str = Field(default_factory=lambda: f"user_{uuid.uuid4().hex[:8]}", primary_key=True)
+    hashed_password: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class UserCreate(SQLModel):
+    name: str
+    email: str
+    password: str
+    role: str = "viewer"
 
 class UserRead(UserBase):
     id: str

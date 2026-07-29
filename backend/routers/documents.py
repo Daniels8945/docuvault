@@ -9,9 +9,10 @@ from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
 import storage
+from auth import get_current_user, require_admin, require_editor
 from database import get_session
 from metrics import DOCUMENTS_UPLOADED, UPLOAD_FAILURES, S3_OPERATION_SECONDS
-from models import Document, DocumentRead, DocumentUpdate, DocumentVersion, DocumentVersionRead, Approval
+from models import Document, DocumentRead, DocumentUpdate, DocumentVersion, DocumentVersionRead, Approval, User
 
 log = logging.getLogger("docuvault.documents")
 
@@ -29,6 +30,7 @@ def get_documents(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     session: Session = Depends(get_session),
+    _user: User = Depends(get_current_user),
 ):
     query = select(Document)
     if workspace_id:
@@ -49,8 +51,8 @@ async def upload_document(
     workspace_id: Optional[str] = None,
     folder_id: Optional[str] = None,
     tags: Optional[str] = None,
-    uploaded_by: str = "user_olaoluwa",
     session: Session = Depends(get_session),
+    current_user: User = Depends(require_editor),
 ):
     file_bytes = await file.read()
 
@@ -84,7 +86,7 @@ async def upload_document(
         file_size=len(file_bytes),
         workspace_id=effective_workspace,
         folder_id=folder_id,
-        uploaded_by=uploaded_by,
+        uploaded_by=current_user.name,
         status="active",
         current_version=1,
     )
@@ -100,7 +102,7 @@ async def upload_document(
             document_id=document.id,
             version_number=1,
             file_path=file_key,
-            uploaded_by=uploaded_by,
+            uploaded_by=current_user.name,
         )
         session.add(version)
         session.commit()
@@ -120,7 +122,7 @@ async def upload_document(
 
 
 @router.get("/{document_id}", response_model=DocumentRead)
-def get_document(document_id: str, session: Session = Depends(get_session)):
+def get_document(document_id: str, session: Session = Depends(get_session), _user: User = Depends(get_current_user)):
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -132,6 +134,7 @@ def update_document(
     document_id: str,
     document_update: DocumentUpdate,
     session: Session = Depends(get_session),
+    _editor: User = Depends(require_editor),
 ):
     document = session.get(Document, document_id)
     if not document:
@@ -145,7 +148,7 @@ def update_document(
 
 
 @router.get("/{document_id}/download")
-def download_document(document_id: str, session: Session = Depends(get_session)):
+def download_document(document_id: str, session: Session = Depends(get_session), _user: User = Depends(get_current_user)):
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -159,7 +162,7 @@ def download_document(document_id: str, session: Session = Depends(get_session))
 
 
 @router.get("/{document_id}/preview")
-def preview_document(document_id: str, session: Session = Depends(get_session)):
+def preview_document(document_id: str, session: Session = Depends(get_session), _user: User = Depends(get_current_user)):
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -171,7 +174,7 @@ def preview_document(document_id: str, session: Session = Depends(get_session)):
 
 
 @router.get("/{document_id}/url")
-def get_document_url(document_id: str, hours: int = 1, session: Session = Depends(get_session)):
+def get_document_url(document_id: str, hours: int = 1, session: Session = Depends(get_session), _user: User = Depends(get_current_user)):
     """Return a short-lived presigned URL for direct browser access."""
     document = session.get(Document, document_id)
     if not document:
@@ -185,7 +188,7 @@ def get_document_url(document_id: str, hours: int = 1, session: Session = Depend
 
 
 @router.delete("/{document_id}")
-def delete_document(document_id: str, session: Session = Depends(get_session)):
+def delete_document(document_id: str, session: Session = Depends(get_session), _editor: User = Depends(require_editor)):
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -204,7 +207,7 @@ def delete_document(document_id: str, session: Session = Depends(get_session)):
 
 
 @router.get("/{document_id}/versions", response_model=List[DocumentVersionRead])
-def get_document_versions(document_id: str, session: Session = Depends(get_session)):
+def get_document_versions(document_id: str, session: Session = Depends(get_session), _user: User = Depends(get_current_user)):
     return session.exec(
         select(DocumentVersion).where(DocumentVersion.document_id == document_id)
     ).all()
@@ -214,8 +217,8 @@ def get_document_versions(document_id: str, session: Session = Depends(get_sessi
 async def upload_new_version(
     document_id: str,
     file: UploadFile = File(...),
-    uploaded_by: str = "user_olaoluwa",
     session: Session = Depends(get_session),
+    current_user: User = Depends(require_editor),
 ):
     document = session.get(Document, document_id)
     if not document:
@@ -249,7 +252,7 @@ async def upload_new_version(
         document_id=document_id,
         version_number=new_version_number,
         file_path=file_key,
-        uploaded_by=uploaded_by,
+        uploaded_by=current_user.name,
     )
 
     try:

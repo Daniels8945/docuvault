@@ -1,6 +1,6 @@
 import os
 import logging
-from sqlmodel import SQLModel, create_engine, Session
+from sqlmodel import SQLModel, create_engine, Session, text
 from typing import Generator
 
 log = logging.getLogger("docuvault.db")
@@ -27,8 +27,23 @@ engine = create_engine(
 def init_db():
     SQLModel.metadata.create_all(engine)
 
+    # Safe migration: add hashed_password column to user table if it doesn't exist yet.
+    # This handles upgrades from deployments that predate auth.
+    if not _is_sqlite:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name='user' AND column_name='hashed_password'"
+                )
+            )
+            if not result.fetchone():
+                conn.execute(text("ALTER TABLE \"user\" ADD COLUMN hashed_password VARCHAR"))
+                conn.commit()
+                log.info("Migration: added hashed_password column to user table")
+
     with Session(engine) as session:
-        from models import Organization, Workspace, Folder, User
+        from models import Organization, Workspace, Folder
 
         if session.query(Organization).first():
             return
@@ -51,7 +66,6 @@ def init_db():
         session.add_all([ws1, ws2, ws3, ws4, ws_inbox])
         session.commit()
 
-        from models import Folder
         folder1 = Folder(name="Contracts",            workspace_id="ws_trading")
         folder2 = Folder(name="Reports",              workspace_id="ws_trading")
         folder3 = Folder(name="Regulatory Filings",   workspace_id="ws_legal")
@@ -60,11 +74,7 @@ def init_db():
         session.add_all([folder1, folder2, folder3, folder4, folder5])
         session.commit()
 
-        user = User(id="user_olaoluwa", name="Olaoluwa", email="olaoluwa@onction.com", role="admin")
-        session.add(user)
-        session.commit()
-
-        log.info("Seed data created.")
+        log.info("Seed data created. Visit /register to create the first admin account.")
 
 
 def get_session() -> Generator[Session, None, None]:

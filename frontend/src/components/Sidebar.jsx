@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Clock, MessageCircle, Settings,
-  FolderOpen, Sun, Moon, Plus, Trash2, Check, X, Pencil, Building2,
+  LayoutDashboard, Clock, MessageCircle, Settings, CheckSquare,
+  FolderOpen, Sun, Moon, Plus, Trash2, Check, X, Pencil, Building2, LogOut,
 } from 'lucide-react';
 import { useTheme } from '../lib/ThemeContext';
 import {
@@ -15,9 +15,10 @@ const MIN_WIDTH     = 180;
 const MAX_WIDTH     = 420;
 
 const NAV = [
-  { path: '/',       icon: LayoutDashboard, label: 'Dashboard'      },
-  { path: '/inbox',  icon: MessageCircle,   label: 'WhatsApp Inbox' },
-  { path: '/recent', icon: Clock,           label: 'Recent'         },
+  { path: '/',            icon: LayoutDashboard, label: 'Dashboard'      },
+  { path: '/inbox',       icon: MessageCircle,   label: 'WhatsApp Inbox' },
+  { path: '/recent',      icon: Clock,           label: 'Recent'         },
+  { path: '/approvals',   icon: CheckSquare,     label: 'Approvals'      },
 ];
 
 const VaultLogo = () => (
@@ -141,6 +142,7 @@ const Sidebar = ({
   onSelectOrg, onSelectWorkspace,
   onOrgCreated, onOrgDeleted, onOrgRenamed,
   onWorkspaceCreated, onWorkspaceDeleted, onWorkspaceRenamed,
+  onLogout,
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -528,6 +530,22 @@ const Sidebar = ({
                 {currentUser.role}
               </p>
             </div>
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                title="Sign out"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 28, height: 28, borderRadius: 6, border: 'none',
+                  background: 'transparent', cursor: 'pointer',
+                  color: 'var(--c-text2)', flexShrink: 0,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--c-danger-bg)'; e.currentTarget.style.color = 'var(--c-danger)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--c-text2)'; }}
+              >
+                <LogOut size={14} />
+              </button>
+            )}
           </div>
         </div>
       )}
