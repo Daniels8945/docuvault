@@ -4,6 +4,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlmodel import Session, select
 
 from auth import (
@@ -25,10 +26,14 @@ router = APIRouter(prefix="/api", tags=["Auth & Users"])
 
 @router.get("/auth/setup-status", summary="Check whether initial admin setup is needed")
 def setup_status(session: Session = Depends(get_session)):
-    has_auth_user = session.exec(
-        select(User).where(User.hashed_password.is_not(None))
-    ).first()
-    return {"setup_complete": bool(has_auth_user)}
+    try:
+        has_auth_user = session.exec(
+            select(User).where(User.hashed_password.isnot(None))
+        ).first()
+        return {"setup_complete": bool(has_auth_user)}
+    except OperationalError:
+        # Column missing — treat as setup needed
+        return {"setup_complete": False}
 
 
 # ── Register first admin ────────────────────────────────────────────────────────
@@ -40,9 +45,17 @@ def register_first_admin(req: UserCreate, session: Session = Depends(get_session
     from a pre-auth version). Creates the account as admin regardless of the
     role field. Subsequent user accounts must be created by an admin via POST /api/users.
     """
-    has_auth_user = session.exec(
-        select(User).where(User.hashed_password.is_not(None))
-    ).first()
+    try:
+        has_auth_user = session.exec(
+            select(User).where(User.hashed_password.isnot(None))
+        ).first()
+    except OperationalError as exc:
+        log.error("register: DB error checking for existing admin — %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {exc.orig}. The hashed_password column may be missing — run the migration.",
+        )
+
     if has_auth_user:
         raise HTTPException(
             status_code=403,
@@ -52,15 +65,25 @@ def register_first_admin(req: UserCreate, session: Session = Depends(get_session
     if session.exec(select(User).where(User.email == req.email)).first():
         raise HTTPException(status_code=400, detail="Email already in use")
 
-    user = User(
-        name=req.name,
-        email=req.email,
-        role="admin",
-        hashed_password=hash_password(req.password),
-    )
-    session.add(user)
-    session.commit()
-    session.refresh(user)
+    try:
+        user = User(
+            name=req.name,
+            email=req.email,
+            role="admin",
+            hashed_password=hash_password(req.password),
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+    except IntegrityError as exc:
+        session.rollback()
+        log.error("register: integrity error — %s", exc)
+        raise HTTPException(status_code=400, detail="Email already in use")
+    except OperationalError as exc:
+        session.rollback()
+        log.error("register: DB operational error — %s", exc)
+        raise HTTPException(status_code=500, detail=f"Database error: {exc.orig}")
+
     log.info("Initial admin registered: id=%s  email=%s", user.id, user.email)
     return user
 

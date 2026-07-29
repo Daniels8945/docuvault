@@ -27,20 +27,26 @@ engine = create_engine(
 def init_db():
     SQLModel.metadata.create_all(engine)
 
-    # Safe migration: add hashed_password column to user table if it doesn't exist yet.
-    # This handles upgrades from deployments that predate auth.
+    # Safe migration: ensure hashed_password and role columns exist.
+    # Handles upgrades from pre-auth deployments where these columns are missing.
     if not _is_sqlite:
         with engine.connect() as conn:
-            result = conn.execute(
-                text(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_name='user' AND column_name='hashed_password'"
+            existing = {
+                row[0] for row in conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_name='user'"
+                    )
                 )
-            )
-            if not result.fetchone():
-                conn.execute(text("ALTER TABLE \"user\" ADD COLUMN hashed_password VARCHAR"))
+            }
+            if "hashed_password" not in existing:
+                conn.execute(text('ALTER TABLE "user" ADD COLUMN hashed_password VARCHAR'))
                 conn.commit()
-                log.info("Migration: added hashed_password column to user table")
+                log.info("Migration: added hashed_password column")
+            if "role" not in existing:
+                conn.execute(text("ALTER TABLE \"user\" ADD COLUMN role VARCHAR NOT NULL DEFAULT 'viewer'"))
+                conn.commit()
+                log.info("Migration: added role column")
 
     with Session(engine) as session:
         from models import Organization, Workspace, Folder
