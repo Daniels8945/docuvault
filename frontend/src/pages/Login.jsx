@@ -183,30 +183,10 @@ const Login = () => {
           </form>
         </div>
 
-        {/* Mode toggle */}
-        <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--c-text2)', marginTop: 16 }}>
-          {mode === 'setup' ? (
-            <>
-              Already have an account?{' '}
-              <button onClick={() => { setMode('login'); setError(''); }}
-                style={{ color: 'var(--c-accent-txt)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                Sign in instead
-              </button>
-            </>
-          ) : (
-            <>
-              First time here?{' '}
-              <button onClick={() => { setMode('setup'); setError(''); }}
-                style={{ color: 'var(--c-accent-txt)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                Set up admin account
-              </button>
-            </>
-          )}
-        </p>
-
         {mode === 'setup' && (
-          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--c-text2)', marginTop: 8 }}>
-            This account will be the system administrator.
+          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--c-text2)', marginTop: 16 }}>
+            This account will be the system administrator.<br />
+            Additional users are created by the admin after setup.
           </p>
         )}
 
