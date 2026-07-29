@@ -2,13 +2,22 @@ import axios from 'axios';
 
 const api = axios.create({ baseURL: '/api' });
 
+// ── Request interceptor — attach token from localStorage on every request ─────
+// axios.create() copies defaults at creation time; subsequent changes to
+// axios.defaults do NOT propagate to custom instances. Reading from localStorage
+// on each request is the only reliable way to keep the header in sync.
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('dv-token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
 // ── 401 interceptor — redirect to /login when token expires ───────────────────
 api.interceptors.response.use(
   res => res,
   err => {
     if (err?.response?.status === 401 && window.location.pathname !== '/login') {
       localStorage.removeItem('dv-token');
-      delete axios.defaults.headers.common['Authorization'];
       window.location.href = '/login';
     }
     return Promise.reject(err);
