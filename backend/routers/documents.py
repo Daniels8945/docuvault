@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
@@ -51,9 +51,9 @@ def get_documents(
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
-    workspace_id: Optional[str] = None,
-    folder_id: Optional[str] = None,
-    tags: Optional[str] = None,
+    workspace_id: Optional[str] = Form(None),
+    folder_id: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
     session: Session = Depends(get_session),
     current_user: User = Depends(require_editor),
 ):

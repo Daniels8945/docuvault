@@ -6,8 +6,10 @@ import Spinner from './ui/Spinner';
 import Modal from './ui/Modal';
 import { formatFileSize, getFileLabel } from '../lib/fileUtils';
 import {
-  fetchDocumentVersions, updateDocument, deleteDocument, uploadNewVersion, downloadDocument,
+  fetchDocumentVersions, updateDocument, deleteDocument, uploadNewVersion,
+  fetchPreviewBlob, downloadDocumentFile,
 } from '../services/api';
+import { useToast } from '../lib/ToastContext';
 
 const PREVIEWABLE_TYPES = [
   'application/pdf',
@@ -18,34 +20,74 @@ const PREVIEWABLE_TYPES = [
 const canPreview = (type = '') =>
   PREVIEWABLE_TYPES.includes(type) || type.startsWith('image/');
 
+// Preview/download need the JWT bearer token, which only axios attaches —
+// a plain <img>/<embed> src or <a href> hits the API with no auth header and
+// gets a 401 JSON body back. Fetching as an authenticated blob and pointing
+// the element at a local object URL sidesteps that entirely.
 const PreviewPane = ({ docId, fileType, name }) => {
-  const previewUrl = `/api/documents/${docId}/preview`;
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [error, setError]     = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl;
+    setBlobUrl(null);
+    setError(false);
+    fetchPreviewBlob(docId)
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError(true);
+        toast('Could not load preview.', 'error');
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docId]);
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p className="text-sm" style={{ color: 'var(--c-text2)' }}>Preview unavailable.</p>
+      </div>
+    );
+  }
+  if (!blobUrl) {
+    return <div className="flex items-center justify-center h-full"><Spinner /></div>;
+  }
 
   if (fileType.startsWith('image/')) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 16, background: 'var(--c-bg)' }}>
-        <img src={previewUrl} alt={name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }} />
+        <img src={blobUrl} alt={name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }} />
       </div>
     );
   }
   if (fileType === 'application/pdf') {
     return (
       <embed
-        src={previewUrl}
+        src={blobUrl}
         type="application/pdf"
         style={{ display: 'block', width: '100%', height: '100%', background: 'var(--c-bg)' }}
       />
     );
   }
   if (fileType === 'text/plain') {
-    return <TextPreview url={previewUrl} />;
+    return <TextPreview blobUrl={blobUrl} />;
   }
   return null;
 };
 
-const TextPreview = ({ url }) => {
+const TextPreview = ({ blobUrl }) => {
   const [text, setText] = useState('');
-  useEffect(() => { fetch(url).then(r => r.text()).then(setText); }, [url]);
+  useEffect(() => { fetch(blobUrl).then(r => r.text()).then(setText); }, [blobUrl]);
   return (
     <pre className="p-5 text-xs overflow-auto h-full whitespace-pre-wrap break-words"
       style={{ background: 'var(--c-bg)', color: 'var(--c-text)', fontFamily: 'monospace' }}>
@@ -55,6 +97,7 @@ const TextPreview = ({ url }) => {
 };
 
 const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
+  const { toast } = useToast();
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState(canPreview(doc.file_type) ? 'preview' : 'versions');
@@ -63,6 +106,7 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
   const [editTags, setEditTags] = useState(false);
   const [tags, setTags] = useState((doc.tags || []).join(', '));
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const versionInputRef = useRef(null);
 
@@ -102,8 +146,24 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
   const handleVersionUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    await uploadNewVersion(doc.id, file);
-    onUpdate();
+    try {
+      await uploadNewVersion(doc.id, file);
+      toast(`New version of "${doc.name}" uploaded`, 'success');
+      onUpdate();
+    } catch {
+      toast('Version upload failed — please try again.', 'error');
+    }
+  };
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      await downloadDocumentFile(doc.id, doc.name);
+    } catch {
+      toast('Download failed — please try again.', 'error');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const TABS = [
@@ -196,9 +256,10 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
 
             {/* Actions */}
             <div className="space-y-2 mt-auto pt-2">
-              <a href={downloadDocument(doc.id)} download={doc.name} className="btn-secondary w-full text-sm">
-                <Download className="w-4 h-4" /> Download
-              </a>
+              <button onClick={handleDownload} disabled={downloading}
+                className="btn-secondary w-full text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                <Download className="w-4 h-4" /> {downloading ? 'Downloading…' : 'Download'}
+              </button>
               {isAdmin && !confirmDelete && (
                 <button onClick={() => setConfirmDelete(true)}
                   className="w-full flex items-center justify-center gap-2 text-xs py-2 transition rounded-lg"

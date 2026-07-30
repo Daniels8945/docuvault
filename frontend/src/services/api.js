@@ -72,8 +72,26 @@ export const uploadDocument = (file, metadata) => {
 
 export const updateDocument   = (id, data) => api.put(`/documents/${id}`, data).then(r => r.data);
 export const deleteDocument   = (id)       => api.delete(`/documents/${id}`).then(r => r.data);
-export const downloadDocument = (id)       => `/api/documents/${id}/download`;
-export const previewDocument  = (id)       => `/api/documents/${id}/preview`;
+
+// Preview/download go through the /api origin directly (no auth header) so the
+// browser can render/save them like a normal URL, but that means <img>/<embed>/<a>
+// tags can't attach the JWT. Both are fetched as authenticated blobs instead —
+// see fetchPreviewBlob / downloadDocumentFile below.
+
+export const fetchPreviewBlob = (id) =>
+  api.get(`/documents/${id}/preview`, { responseType: 'blob' }).then(r => r.data);
+
+export const downloadDocumentFile = async (id, filename) => {
+  const blob = await api.get(`/documents/${id}/download`, { responseType: 'blob' }).then(r => r.data);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'download';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+};
 
 // ── Versions ───────────────────────────────────────────────────────────────────
 export const fetchDocumentVersions = (id) =>
