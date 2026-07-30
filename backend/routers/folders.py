@@ -1,10 +1,10 @@
 from fastapi import APIRouter, HTTPException, Depends
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 from typing import List, Optional
 
 from auth import get_current_user, require_admin, require_editor
 from database import get_session
-from models import Folder, FolderCreate, FolderRead, User
+from models import Folder, FolderCreate, FolderRead, Document, User
 
 router = APIRouter(prefix="/api/folders", tags=["Folders"])
 
@@ -18,7 +18,21 @@ def get_folders(
     query = select(Folder)
     if workspace_id:
         query = query.where(Folder.workspace_id == workspace_id)
-    return session.exec(query).all()
+    folders = session.exec(query).all()
+    if not folders:
+        return []
+
+    folder_ids = [f.id for f in folders]
+    counts = dict(session.exec(
+        select(Document.folder_id, func.count(Document.id))
+        .where(Document.folder_id.in_(folder_ids))
+        .group_by(Document.folder_id)
+    ).all())
+
+    return [
+        FolderRead(**f.dict(), document_count=counts.get(f.id, 0))
+        for f in folders
+    ]
 
 
 @router.post("", response_model=FolderRead)

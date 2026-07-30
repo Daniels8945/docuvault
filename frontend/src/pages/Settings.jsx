@@ -7,6 +7,7 @@ import {
   fetchUsers, createUser, deleteUser,
 } from '../services/api';
 import Spinner from '../components/ui/Spinner';
+import { useToast } from '../lib/ToastContext';
 
 const ROLE_LABELS = { admin: 'Admin', editor: 'Editor', viewer: 'Viewer' };
 const ROLE_COLORS = {
@@ -16,6 +17,7 @@ const ROLE_COLORS = {
 };
 
 const Settings = ({ currentUser }) => {
+  const { toast } = useToast();
   const isAdmin = currentUser?.role === 'admin';
 
   const TABS = [
@@ -59,19 +61,25 @@ const Settings = ({ currentUser }) => {
       if (tab === 'orgs')       await createOrganization({ name: formData.name, description: formData.description });
       if (tab === 'workspaces') await createWorkspace({ name: formData.name, organization_id: formData.org_id, description: formData.description });
       if (tab === 'users')      await createUser({ name: formData.name, email: formData.email, password: formData.password, role: formData.role || 'viewer' });
+      toast(`${tab === 'orgs' ? 'Organization' : tab === 'workspaces' ? 'Workspace' : 'User'} "${formData.name}" created`, 'success');
       resetForm();
       load();
     } catch (err) {
-      alert(err?.response?.data?.detail || 'Save failed.');
+      const detail = err?.response?.data?.detail;
+      toast(typeof detail === 'string' ? detail : 'Save failed — please try again.', 'error');
     } finally { setSaving(false); }
   };
 
   const handleDelete = async (type, id) => {
     if (!confirm('Delete this item?')) return;
-    if (type === 'workspace') await deleteWorkspace(id);
-    if (type === 'rule')      await deleteWhatsAppRule(id);
-    if (type === 'user')      await deleteUser(id);
-    load();
+    try {
+      if (type === 'workspace') await deleteWorkspace(id);
+      if (type === 'rule')      await deleteWhatsAppRule(id);
+      if (type === 'user')      await deleteUser(id);
+      load();
+    } catch {
+      toast('Delete failed — please try again.', 'error');
+    }
   };
 
   const wsName  = (id) => workspaces.find(w => w.id === id)?.name || id;

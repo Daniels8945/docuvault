@@ -76,6 +76,7 @@ class FolderCreate(FolderBase):
 class FolderRead(FolderBase):
     id: str
     created_at: datetime
+    document_count: int = 0
 
 # ==================== DOCUMENTS ====================
 

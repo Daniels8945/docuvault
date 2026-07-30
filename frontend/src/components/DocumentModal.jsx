@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Trash2, Upload, Pencil, Check, X, Clock, Eye, EyeOff } from 'lucide-react';
+import { Download, Trash2, Upload, Pencil, Check, X, Clock, Eye, EyeOff, FolderInput } from 'lucide-react';
 import { format } from 'date-fns';
 import FileIcon from './FileIcon';
 import Spinner from './ui/Spinner';
@@ -7,7 +7,7 @@ import Modal from './ui/Modal';
 import { formatFileSize, getFileLabel } from '../lib/fileUtils';
 import {
   fetchDocumentVersions, updateDocument, deleteDocument, uploadNewVersion,
-  fetchPreviewBlob, downloadDocumentFile,
+  fetchPreviewBlob, downloadDocumentFile, fetchWorkspaces, fetchFolders,
 } from '../services/api';
 import { useToast } from '../lib/ToastContext';
 
@@ -108,6 +108,12 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showMove, setShowMove] = useState(false);
+  const [moveWorkspaces, setMoveWorkspaces] = useState([]);
+  const [moveFolders, setMoveFolders] = useState([]);
+  const [moveWorkspaceId, setMoveWorkspaceId] = useState(doc.workspace_id === 'ws_inbox' ? '' : doc.workspace_id);
+  const [moveFolderId, setMoveFolderId] = useState(doc.folder_id || '');
+  const [moving, setMoving] = useState(false);
   const versionInputRef = useRef(null);
 
   const { color } = getFileLabel(doc.file_type);
@@ -119,6 +125,16 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
       .then(setVersions)
       .finally(() => setLoading(false));
   }, [doc.id]);
+
+  useEffect(() => {
+    if (!showMove) return;
+    fetchWorkspaces().then(ws => setMoveWorkspaces(ws.filter(w => w.id !== 'ws_inbox')));
+  }, [showMove]);
+
+  useEffect(() => {
+    if (!showMove || !moveWorkspaceId) { setMoveFolders([]); return; }
+    fetchFolders(moveWorkspaceId).then(setMoveFolders);
+  }, [showMove, moveWorkspaceId]);
 
   const save = async (patch) => {
     setSaving(true);
@@ -163,6 +179,22 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
       toast('Download failed — please try again.', 'error');
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleMove = async () => {
+    if (!moveWorkspaceId) return;
+    setMoving(true);
+    try {
+      await updateDocument(doc.id, { workspace_id: moveWorkspaceId, folder_id: moveFolderId || null });
+      const wsName = moveWorkspaces.find(w => w.id === moveWorkspaceId)?.name || moveWorkspaceId;
+      toast(`Moved "${doc.name}" to ${wsName}`, 'success');
+      setShowMove(false);
+      onUpdate();
+    } catch {
+      toast('Move failed — please try again.', 'error');
+    } finally {
+      setMoving(false);
     }
   };
 
@@ -260,6 +292,46 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
                 className="btn-secondary w-full text-sm disabled:opacity-50 disabled:cursor-not-allowed">
                 <Download className="w-4 h-4" /> {downloading ? 'Downloading…' : 'Download'}
               </button>
+
+              {isAdmin && !showMove && (
+                <button onClick={() => setShowMove(true)} className="btn-secondary w-full text-sm">
+                  <FolderInput className="w-4 h-4" /> Move to…
+                </button>
+              )}
+              {showMove && (
+                <div className="rounded-xl p-3 space-y-2"
+                  style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)' }}>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--c-text2)' }}>Workspace</label>
+                    <select value={moveWorkspaceId}
+                      onChange={e => { setMoveWorkspaceId(e.target.value); setMoveFolderId(''); }}
+                      className="input-field w-full text-xs py-1.5">
+                      <option value="">Select workspace…</option>
+                      {moveWorkspaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </select>
+                  </div>
+                  {moveFolders.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--c-text2)' }}>Folder</label>
+                      <select value={moveFolderId} onChange={e => setMoveFolderId(e.target.value)}
+                        className="input-field w-full text-xs py-1.5">
+                        <option value="">No folder (root)</option>
+                        {moveFolders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={handleMove} disabled={!moveWorkspaceId || moving}
+                      className="btn-primary text-xs px-3 py-1.5 flex-1 disabled:opacity-40">
+                      {moving ? 'Moving…' : 'Move'}
+                    </button>
+                    <button onClick={() => setShowMove(false)} className="btn-secondary text-xs px-3 py-1.5 flex-1">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {isAdmin && !confirmDelete && (
                 <button onClick={() => setConfirmDelete(true)}
                   className="w-full flex items-center justify-center gap-2 text-xs py-2 transition rounded-lg"

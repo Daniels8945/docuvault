@@ -49,6 +49,7 @@ export const deleteOrganization  = (id)       => api.delete(`/organizations/${id
 export const fetchWorkspaces  = (orgId = null) =>
   api.get('/workspaces', { params: orgId ? { org_id: orgId } : {} }).then(r => r.data);
 export const fetchWorkspace   = (id)       => api.get(`/workspaces/${id}`).then(r => r.data);
+export const fetchWorkspaceStats = (id)    => api.get(`/workspaces/${id}/stats`).then(r => r.data);
 export const createWorkspace  = (data)     => api.post('/workspaces', data).then(r => r.data);
 export const updateWorkspace  = (id, data) => api.patch(`/workspaces/${id}`, data).then(r => r.data);
 export const deleteWorkspace  = (id)       => api.delete(`/workspaces/${id}`).then(r => r.data);

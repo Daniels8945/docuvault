@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import Modal from './ui/Modal';
 import { createFolder } from '../services/api';
+import { useToast } from '../lib/ToastContext';
 
 const CreateFolderModal = ({ workspaceId, onClose, onCreated }) => {
+  const { toast } = useToast();
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -12,9 +14,10 @@ const CreateFolderModal = ({ workspaceId, onClose, onCreated }) => {
     setSaving(true);
     try {
       await createFolder({ name: name.trim(), workspace_id: workspaceId });
+      toast(`Folder "${name.trim()}" created`, 'success');
       onCreated();
     } catch {
-      alert('Failed to create folder.');
+      toast('Failed to create folder — please try again.', 'error');
     } finally {
       setSaving(false);
     }

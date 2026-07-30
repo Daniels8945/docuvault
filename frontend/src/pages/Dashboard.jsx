@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Upload, FolderPlus, Search, FolderOpen, Trash2, FileText, HardDrive, Calendar, Building2 } from 'lucide-react';
-import { isThisWeek } from 'date-fns';
-import { fetchDocuments, fetchFolders, fetchWorkspace, deleteFolder } from '../services/api';
+import { fetchDocuments, fetchFolders, fetchWorkspace, fetchWorkspaceStats, deleteFolder } from '../services/api';
 import DocumentCard from '../components/DocumentCard';
 import DocumentModal from '../components/DocumentModal';
 import UploadModal from '../components/UploadModal';
@@ -40,6 +39,7 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
   const [documents, setDocuments] = useState([]);
   const [folders, setFolders] = useState([]);
   const [workspace, setWorkspace] = useState(null);
+  const [stats, setStats] = useState(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
@@ -51,7 +51,7 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
     if (!selectedWorkspace) { setLoading(false); return; }
     setLoading(true);
     try {
-      const [ws, flds, docs] = await Promise.all([
+      const [ws, flds, docs, wsStats] = await Promise.all([
         fetchWorkspace(selectedWorkspace),
         fetchFolders(selectedWorkspace),
         fetchDocuments({
@@ -62,10 +62,12 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
           ...(search ? { search } : {}),
           ...(statusFilter ? { status: statusFilter } : {}),
         }),
+        fetchWorkspaceStats(selectedWorkspace),
       ]);
       setWorkspace(ws);
       setFolders(flds);
       setDocuments(docs);
+      setStats(wsStats);
     } finally {
       setLoading(false);
     }
@@ -90,9 +92,6 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
     await deleteFolder(folderId);
     load();
   };
-
-  const totalStorage  = documents.reduce((s, d) => s + (d.file_size || 0), 0);
-  const thisWeekCount = documents.filter(d => isThisWeek(new Date(d.created_at))).length;
 
   // ── No workspace selected ─────────────────────────────────────────────────
   if (!selectedWorkspace) {
@@ -144,13 +143,13 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
       </div>
 
       <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
-        {/* Stats */}
+        {/* Stats — always workspace-wide (root + every folder), not just what's on screen */}
         {!selectedFolder && (
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 fade-in-up">
-            <StatCard icon={FileText}   value={documents.length}             label="Total documents" color="#6366f1" />
-            <StatCard icon={Calendar}   value={thisWeekCount}                label="Added this week" color="#22c55e" />
-            <StatCard icon={HardDrive}  value={formatFileSize(totalStorage)} label="Storage used"    color="#f59e0b" />
-            <StatCard icon={FolderOpen} value={folders.length}               label="Folders"         color="#06b6d4" />
+            <StatCard icon={FileText}   value={stats?.document_count ?? 0}                label="Total documents" color="#6366f1" />
+            <StatCard icon={Calendar}   value={stats?.this_week_count ?? 0}                label="Added this week" color="#22c55e" />
+            <StatCard icon={HardDrive}  value={formatFileSize(stats?.storage_bytes ?? 0)}  label="Storage used"    color="#f59e0b" />
+            <StatCard icon={FolderOpen} value={stats?.folder_count ?? folders.length}       label="Folders"         color="#06b6d4" />
           </div>
         )}
 
@@ -190,7 +189,7 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
                   <FolderOpen className="w-7 h-7" style={{ color: 'var(--c-accent-txt)' }} />
                   <p className="text-xs font-medium text-center truncate w-full" style={{ color: 'var(--c-text)' }}>{folder.name}</p>
                   <p className="text-xs" style={{ color: 'var(--c-text2)' }}>
-                    {documents.filter(d => d.folder_id === folder.id).length} docs
+                    {folder.document_count ?? 0} docs
                   </p>
                   {currentUser?.role === 'admin' && (
                     <button onClick={e => handleFolderDelete(e, folder.id)}
@@ -222,6 +221,19 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
             <EmptyState icon={Search}
               title="No results"
               description={`Nothing matches "${search}". Try a different search term.`} />
+          ) : selectedFolder ? (
+            <EmptyState icon={Upload}
+              title="This folder is empty"
+              description="Upload a document here, or drag one in from the top-level view."
+              action={
+                <button onClick={() => setShowUpload(true)} className="btn-primary text-sm">
+                  <Upload className="w-4 h-4" /> Upload a Document
+                </button>
+              } />
+          ) : folders.length > 0 ? (
+            <EmptyState icon={FolderOpen}
+              title="No documents outside a folder"
+              description="This workspace's documents are all organised inside the folders above." />
           ) : (
             <EmptyState icon={Upload}
               title="This workspace is empty"
