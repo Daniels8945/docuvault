@@ -56,7 +56,9 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
         fetchFolders(selectedWorkspace),
         fetchDocuments({
           workspace_id: selectedWorkspace,
-          ...(selectedFolder ? { folder_id: selectedFolder } : {}),
+          ...(selectedFolder
+            ? { folder_id: selectedFolder }
+            : { root_only: true }),
           ...(search ? { search } : {}),
           ...(statusFilter ? { status: statusFilter } : {}),
         }),

@@ -25,6 +25,7 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 def get_documents(
     workspace_id: Optional[str] = None,
     folder_id: Optional[str] = None,
+    root_only: bool = Query(default=False),
     status: Optional[str] = None,
     search: Optional[str] = None,
     skip: int = Query(default=0, ge=0),
@@ -37,6 +38,8 @@ def get_documents(
         query = query.where(Document.workspace_id == workspace_id)
     if folder_id:
         query = query.where(Document.folder_id == folder_id)
+    elif root_only:
+        query = query.where(Document.folder_id == None)  # noqa: E711
     if status:
         query = query.where(Document.status == status)
     if search:

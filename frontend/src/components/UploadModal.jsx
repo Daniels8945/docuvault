@@ -1,14 +1,17 @@
 import React, { useState, useRef } from 'react';
-import { Upload, File, X } from 'lucide-react';
+import { Upload, File, X, CheckCircle } from 'lucide-react';
 import Modal from './ui/Modal';
 import { uploadDocument } from '../services/api';
 import { formatFileSize } from '../lib/fileUtils';
+import { useToast } from '../lib/ToastContext';
 
 const UploadModal = ({ workspaceId, folderId, onClose, onComplete }) => {
-  const [files, setFiles] = useState([]);
-  const [tags, setTags] = useState('');
+  const { toast } = useToast();
+  const [files, setFiles]         = useState([]);
+  const [tags, setTags]           = useState('');
   const [uploading, setUploading] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
+  const [dragOver, setDragOver]   = useState(false);
+  const [done, setDone]           = useState(false);
   const inputRef = useRef(null);
 
   const addFiles = (incoming) => setFiles(prev => [...prev, ...Array.from(incoming)]);
@@ -21,13 +24,49 @@ const UploadModal = ({ workspaceId, folderId, onClose, onComplete }) => {
       for (const file of files) {
         await uploadDocument(file, { workspace_id: workspaceId, folder_id: folderId, tags });
       }
-      onComplete();
-    } catch {
-      alert('Upload failed. Please try again.');
+      setDone(true);
+      const label = files.length === 1 ? `"${files[0].name}"` : `${files.length} files`;
+      toast(`${label} uploaded successfully`, 'success');
+      setTimeout(() => onComplete(), 1400);
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail : 'Upload failed — please try again.';
+      toast(msg, 'error');
     } finally {
       setUploading(false);
     }
   };
+
+  // ── Success screen ──────────────────────────────────────────────────────────
+  if (done) {
+    return (
+      <Modal onClose={onClose} title="Upload Documents">
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          justifyContent: 'center', padding: '48px 32px', gap: 16,
+        }}>
+          <div style={{
+            width: 72, height: 72, borderRadius: '50%',
+            background: 'rgba(34,197,94,0.12)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'success-pop 0.4s cubic-bezier(.22,.68,0,1.4) forwards',
+          }}>
+            <CheckCircle size={40} style={{ color: '#22c55e' }} />
+          </div>
+          <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text)' }}>
+            {files.length === 1 ? 'File uploaded!' : `${files.length} files uploaded!`}
+          </p>
+          <p style={{ fontSize: 13, color: 'var(--c-text2)' }}>Refreshing workspace…</p>
+          <style>{`
+            @keyframes success-pop {
+              from { transform: scale(0.4); opacity: 0; }
+              to   { transform: scale(1);   opacity: 1; }
+            }
+          `}</style>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal onClose={onClose} title="Upload Documents">
