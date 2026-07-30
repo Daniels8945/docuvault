@@ -147,21 +147,17 @@ const AppShell = () => {
 // ── Root — handles auth gating before router even renders shell ────────────────
 
 const AuthGate = () => {
-  const { token } = useAuth();
-  const [checking, setChecking]   = useState(true);
-  const [authed, setAuthed]       = useState(false);
-  const [needsSetup, setNeedsSetup] = useState(false);
+  const { token, logout } = useAuth();
+  // Only validate on mount if a stored token exists; skip entirely if no token.
+  const [checking, setChecking] = useState(!!token);
 
   useEffect(() => {
     if (!token) { setChecking(false); return; }
+    setChecking(true);
     fetchCurrentUser()
-      .then(() => { setAuthed(true); })
-      .catch(err => {
-        if (err?.response?.status === 403) setNeedsSetup(true);
-        // 401 = token invalid; just show login
-      })
+      .catch(() => logout()) // expired / invalid token — clear it so we redirect
       .finally(() => setChecking(false));
-  }, [token]);
+  }, [token, logout]);
 
   if (checking) {
     return (
@@ -171,14 +167,14 @@ const AuthGate = () => {
     );
   }
 
+  // token is the single source of truth — no separate authed state that can go stale
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      {(authed || token) ? (
-        <Route path="/*" element={<AppShell />} />
-      ) : (
-        <Route path="/*" element={<Navigate to="/login" replace />} />
-      )}
+      {token
+        ? <Route path="/*" element={<AppShell />} />
+        : <Route path="/*" element={<Navigate to="/login" replace />} />
+      }
     </Routes>
   );
 };
