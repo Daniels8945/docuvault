@@ -1,16 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
+import OncLogo from '../components/OncLogo';
 import { loginUser, registerFirstAdmin, fetchSetupStatus } from '../services/api';
-
-const VaultIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-    stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="3"/>
-    <circle cx="12" cy="12" r="3"/>
-    <path d="M12 9v-2M12 17v-2M9 12H7M17 12h-2"/>
-  </svg>
-);
 
 // Flatten FastAPI validation errors (detail can be a string or array of objects)
 const formatError = (err) => {
@@ -83,12 +75,8 @@ const Login = () => {
 
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 52, height: 52, borderRadius: 14,
-            background: 'var(--c-accent-bg)', color: 'var(--c-accent-txt)', marginBottom: 14,
-          }}>
-            <VaultIcon />
+          <div style={{ display: 'inline-flex', marginBottom: 14 }}>
+            <OncLogo size={56} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--c-text)', marginBottom: 4 }}>
             DocuVault
