@@ -67,9 +67,7 @@ export const uploadDocument = (file, metadata) => {
   const form = new FormData();
   form.append('file', file);
   Object.entries(metadata).forEach(([k, v]) => { if (v != null) form.append(k, v); });
-  return api.post('/documents/upload', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }).then(r => r.data);
+  return api.post('/documents/upload', form).then(r => r.data);
 };
 
 export const updateDocument   = (id, data) => api.put(`/documents/${id}`, data).then(r => r.data);
@@ -84,9 +82,7 @@ export const fetchDocumentVersions = (id) =>
 export const uploadNewVersion = (documentId, file) => {
   const form = new FormData();
   form.append('file', file);
-  return api.post(`/documents/${documentId}/versions`, form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }).then(r => r.data);
+  return api.post(`/documents/${documentId}/versions`, form).then(r => r.data);
 };
 
 // ── Users ──────────────────────────────────────────────────────────────────────

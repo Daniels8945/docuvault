@@ -53,9 +53,7 @@ const Login = () => {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--c-accent-bg)', color: 'var(--c-accent-txt)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <VaultIcon />
-          </div>
+          <OncLogo size={36} />
           <p style={{ fontSize: 13, color: 'var(--c-text2)' }}>Loading…</p>
         </div>
       </div>
