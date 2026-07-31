@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import OncLogo from '../components/OncLogo';
 import { loginUser, registerFirstAdmin, fetchSetupStatus } from '../services/api';
@@ -22,6 +23,7 @@ const Login = () => {
   const [form, setForm]       = useState({ name: '', email: '', password: '' });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPw, setShowPw]   = useState(false);
 
   useEffect(() => {
     fetchSetupStatus()
@@ -126,16 +128,30 @@ const Login = () => {
               <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--c-text2)', marginBottom: 6 }}>
                 Password
               </label>
-              <input
-                type="password"
-                value={form.password}
-                onChange={e => set('password', e.target.value)}
-                placeholder="••••••••"
-                required
-                minLength={8}
-                className="input-field"
-                style={{ width: '100%' }}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  value={form.password}
+                  onChange={e => set('password', e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  minLength={8}
+                  className="input-field"
+                  style={{ width: '100%', paddingRight: 38 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(p => !p)}
+                  tabIndex={-1}
+                  style={{
+                    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                    color: 'var(--c-text2)', background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                    display: 'flex', alignItems: 'center',
+                  }}
+                >
+                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             {error && (

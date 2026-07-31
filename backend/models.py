@@ -215,6 +215,14 @@ class UserCreate(SQLModel):
     password: str
     role: str = "viewer"
 
+class UserUpdate(SQLModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None
+
+class UserPasswordReset(SQLModel):
+    new_password: str
+
 class UserRead(UserBase):
     id: str
     created_at: datetime

@@ -15,7 +15,7 @@ from auth import (
     verify_password,
 )
 from database import get_session
-from models import User, UserCreate, UserRead
+from models import User, UserCreate, UserRead, UserUpdate, UserPasswordReset
 
 log = logging.getLogger("docuvault.users")
 
@@ -145,6 +145,56 @@ def create_user(
     session.refresh(user)
     log.info("User created by admin: id=%s  email=%s  role=%s", user.id, user.email, user.role)
     return user
+
+
+@router.patch("/users/{user_id}", response_model=UserRead, summary="Update a user's profile (admin only)")
+def update_user(
+    user_id: str,
+    req: UserUpdate,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+):
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    data = req.dict(exclude_unset=True)
+    if "email" in data and data["email"] != user.email:
+        if session.exec(select(User).where(User.email == data["email"])).first():
+            raise HTTPException(status_code=400, detail="Email already in use")
+
+    for key, value in data.items():
+        setattr(user, key, value)
+
+    try:
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=400, detail="Email already in use")
+
+    log.info("User updated by admin: id=%s", user.id)
+    return user
+
+
+@router.post("/users/{user_id}/reset-password", summary="Reset a user's password (admin only)")
+def reset_user_password(
+    user_id: str,
+    req: UserPasswordReset,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+):
+    if len(req.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.hashed_password = hash_password(req.new_password)
+    session.add(user)
+    session.commit()
+    log.info("Password reset by admin for user: id=%s", user.id)
+    return {"message": "Password reset successfully"}
 
 
 @router.delete("/users/{user_id}", summary="Delete a user (admin only)")

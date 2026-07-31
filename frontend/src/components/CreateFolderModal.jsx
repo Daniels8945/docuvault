@@ -3,7 +3,7 @@ import Modal from './ui/Modal';
 import { createFolder } from '../services/api';
 import { useToast } from '../lib/ToastContext';
 
-const CreateFolderModal = ({ workspaceId, onClose, onCreated }) => {
+const CreateFolderModal = ({ workspaceId, parentFolderId, parentFolderName, onClose, onCreated }) => {
   const { toast } = useToast();
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -13,7 +13,7 @@ const CreateFolderModal = ({ workspaceId, onClose, onCreated }) => {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await createFolder({ name: name.trim(), workspace_id: workspaceId });
+      await createFolder({ name: name.trim(), workspace_id: workspaceId, parent_folder_id: parentFolderId || null });
       toast(`Folder "${name.trim()}" created`, 'success');
       onCreated();
     } catch {
@@ -26,6 +26,11 @@ const CreateFolderModal = ({ workspaceId, onClose, onCreated }) => {
   return (
     <Modal onClose={onClose} title="New Folder" maxWidth="max-w-md">
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        {parentFolderName && (
+          <p className="text-xs" style={{ color: 'var(--c-text2)' }}>
+            Creating inside <span style={{ fontWeight: 600, color: 'var(--c-text)' }}>{parentFolderName}</span>
+          </p>
+        )}
         <div>
           <label className="block text-sm font-medium mb-1">Folder Name</label>
           <input

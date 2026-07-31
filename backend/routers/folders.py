@@ -69,6 +69,25 @@ def delete_folder(
     folder = session.get(Folder, folder_id)
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
+
+    doc_count = session.exec(
+        select(func.count()).select_from(Document).where(Document.folder_id == folder_id)
+    ).one()
+    if doc_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"This folder has {doc_count} document(s) — move or delete them first.",
+        )
+
+    subfolder_count = session.exec(
+        select(func.count()).select_from(Folder).where(Folder.parent_folder_id == folder_id)
+    ).one()
+    if subfolder_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"This folder has {subfolder_count} subfolder(s) — delete them first.",
+        )
+
     session.delete(folder)
     session.commit()
     return {"message": "Folder deleted"}

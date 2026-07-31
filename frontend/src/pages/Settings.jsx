@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings as SettingsIcon, Plus, Trash2, Building2, FolderOpen, MessageCircle, Users, X, Eye, EyeOff } from 'lucide-react';
+import { Settings as SettingsIcon, Plus, Trash2, Pencil, Key, Building2, FolderOpen, MessageCircle, Users, X, Eye, EyeOff } from 'lucide-react';
 import {
   fetchOrganizations, createOrganization,
   fetchWorkspaces, createWorkspace, deleteWorkspace,
   fetchWhatsAppRules, deleteWhatsAppRule,
-  fetchUsers, createUser, deleteUser,
+  fetchUsers, createUser, updateUser, resetUserPassword, deleteUser,
 } from '../services/api';
 import Spinner from '../components/ui/Spinner';
 import { useToast } from '../lib/ToastContext';
@@ -37,6 +37,15 @@ const Settings = ({ currentUser }) => {
   const [saving, setSaving]     = useState(false);
   const [formData, setFormData] = useState({});
   const [showPw, setShowPw]     = useState(false);
+
+  const [editingUserId, setEditingUserId] = useState(null);
+  const [editForm, setEditForm]           = useState({});
+  const [savingEdit, setSavingEdit]       = useState(false);
+
+  const [resettingUserId, setResettingUserId] = useState(null);
+  const [resetPw, setResetPw]                 = useState('');
+  const [showResetPw, setShowResetPw]         = useState(false);
+  const [savingReset, setSavingReset]         = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,6 +89,48 @@ const Settings = ({ currentUser }) => {
     } catch {
       toast('Delete failed — please try again.', 'error');
     }
+  };
+
+  const startEdit = (u) => {
+    setResettingUserId(null);
+    setEditingUserId(u.id);
+    setEditForm({ name: u.name, email: u.email, role: u.role });
+  };
+  const cancelEdit = () => { setEditingUserId(null); setEditForm({}); };
+
+  const saveEdit = async (u) => {
+    if (!editForm.name?.trim() || !editForm.email?.trim()) return;
+    setSavingEdit(true);
+    try {
+      await updateUser(u.id, editForm);
+      toast(`Profile updated for ${editForm.name.trim()}`, 'success');
+      cancelEdit();
+      load();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast(typeof detail === 'string' ? detail : 'Update failed — please try again.', 'error');
+    } finally { setSavingEdit(false); }
+  };
+
+  const startReset = (u) => {
+    setEditingUserId(null);
+    setResettingUserId(u.id);
+    setResetPw('');
+    setShowResetPw(false);
+  };
+  const cancelReset = () => { setResettingUserId(null); setResetPw(''); setShowResetPw(false); };
+
+  const saveReset = async (u) => {
+    if (resetPw.length < 8) return;
+    setSavingReset(true);
+    try {
+      await resetUserPassword(u.id, resetPw);
+      toast(`Password reset for ${u.name}`, 'success');
+      cancelReset();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast(typeof detail === 'string' ? detail : 'Password reset failed — please try again.', 'error');
+    } finally { setSavingReset(false); }
   };
 
   const wsName  = (id) => workspaces.find(w => w.id === id)?.name || id;
@@ -298,31 +349,109 @@ const Settings = ({ currentUser }) => {
                 {users.length === 0 ? (
                   <p className="text-xs p-5" style={{ color: 'var(--c-text2)' }}>No users found.</p>
                 ) : users.map((u, i) => (
-                  <div key={u.id} className="flex items-center gap-4 px-5 py-4"
+                  <div key={u.id}
                     style={i < users.length - 1 ? { borderBottom: '1px solid var(--c-border)' } : {}}>
-                    <div style={{
-                      width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                      background: 'var(--c-accent-bg)', color: 'var(--c-accent-txt)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 13, fontWeight: 700,
-                    }}>
-                      {u.name?.charAt(0)?.toUpperCase() || '?'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium" style={{ color: 'var(--c-text)' }}>{u.name}</p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--c-text2)' }}>{u.email}</p>
-                    </div>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
-                      style={ROLE_COLORS[u.role] || ROLE_COLORS.viewer}>
-                      {ROLE_LABELS[u.role] || u.role}
-                    </span>
-                    {u.id !== currentUser?.id && (
-                      <button onClick={() => handleDelete('user', u.id)}
-                        className="p-1 transition-colors" style={{ color: 'var(--c-text2)' }}
-                        onMouseEnter={e => e.currentTarget.style.color = 'var(--c-danger)'}
-                        onMouseLeave={e => e.currentTarget.style.color = 'var(--c-text2)'}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+
+                    {editingUserId === u.id ? (
+                      <div className="px-5 py-4 space-y-3">
+                        <div>
+                          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--c-text2)' }}>Full Name</label>
+                          <input value={editForm.name || ''} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
+                            className="input-field w-full text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--c-text2)' }}>Email Address</label>
+                          <input type="email" value={editForm.email || ''} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))}
+                            className="input-field w-full text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--c-text2)' }}>Role</label>
+                          <select value={editForm.role || 'viewer'} onChange={e => setEditForm(p => ({ ...p, role: e.target.value }))}
+                            className="input-field w-full text-sm">
+                            <option value="viewer">Viewer — can browse and download documents</option>
+                            <option value="editor">Editor — can upload and manage documents</option>
+                            <option value="admin">Admin — full access including user management</option>
+                          </select>
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button onClick={() => saveEdit(u)}
+                            disabled={!editForm.name?.trim() || !editForm.email?.trim() || savingEdit}
+                            className="btn-primary text-xs px-3 py-1.5 disabled:opacity-40">
+                            {savingEdit ? 'Saving…' : 'Save'}
+                          </button>
+                          <button onClick={cancelEdit} className="btn-secondary text-xs px-3 py-1.5">Cancel</button>
+                        </div>
+                      </div>
+                    ) : resettingUserId === u.id ? (
+                      <div className="px-5 py-4 space-y-3">
+                        <p className="text-xs font-medium" style={{ color: 'var(--c-text)' }}>
+                          Reset password for {u.name}
+                        </p>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type={showResetPw ? 'text' : 'password'}
+                            value={resetPw}
+                            onChange={e => setResetPw(e.target.value)}
+                            placeholder="New password — min. 8 characters"
+                            className="input-field w-full text-sm"
+                            style={{ paddingRight: 36 }}
+                            autoFocus
+                          />
+                          <button type="button" onClick={() => setShowResetPw(p => !p)}
+                            style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-text2)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                            {showResetPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        {resetPw && resetPw.length < 8 && (
+                          <p className="text-xs" style={{ color: 'var(--c-danger)' }}>At least 8 characters required</p>
+                        )}
+                        <div className="flex gap-2">
+                          <button onClick={() => saveReset(u)} disabled={resetPw.length < 8 || savingReset}
+                            className="btn-primary text-xs px-3 py-1.5 disabled:opacity-40">
+                            {savingReset ? 'Resetting…' : 'Reset Password'}
+                          </button>
+                          <button onClick={cancelReset} className="btn-secondary text-xs px-3 py-1.5">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-4 px-5 py-4">
+                        <div style={{
+                          width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                          background: 'var(--c-accent-bg)', color: 'var(--c-accent-txt)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 13, fontWeight: 700,
+                        }}>
+                          {u.name?.charAt(0)?.toUpperCase() || '?'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium" style={{ color: 'var(--c-text)' }}>{u.name}</p>
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--c-text2)' }}>{u.email}</p>
+                        </div>
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
+                          style={ROLE_COLORS[u.role] || ROLE_COLORS.viewer}>
+                          {ROLE_LABELS[u.role] || u.role}
+                        </span>
+                        <button onClick={() => startEdit(u)} title="Edit profile"
+                          className="p-1 transition-colors flex-shrink-0" style={{ color: 'var(--c-text2)' }}
+                          onMouseEnter={e => e.currentTarget.style.color = 'var(--c-text)'}
+                          onMouseLeave={e => e.currentTarget.style.color = 'var(--c-text2)'}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => startReset(u)} title="Reset password"
+                          className="p-1 transition-colors flex-shrink-0" style={{ color: 'var(--c-text2)' }}
+                          onMouseEnter={e => e.currentTarget.style.color = 'var(--c-accent-txt)'}
+                          onMouseLeave={e => e.currentTarget.style.color = 'var(--c-text2)'}>
+                          <Key className="w-3.5 h-3.5" />
+                        </button>
+                        {u.id !== currentUser?.id && (
+                          <button onClick={() => handleDelete('user', u.id)} title="Delete user"
+                            className="p-1 transition-colors flex-shrink-0" style={{ color: 'var(--c-text2)' }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--c-danger)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--c-text2)'}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 ))}

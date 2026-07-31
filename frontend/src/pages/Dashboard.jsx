@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Upload, FolderPlus, Search, FolderOpen, Trash2, FileText, HardDrive, Calendar, Building2 } from 'lucide-react';
+import { ChevronRight, Upload, FolderPlus, Search, FolderOpen, Trash2, FileText, HardDrive, Calendar, Building2 } from 'lucide-react';
 import { fetchDocuments, fetchFolders, fetchWorkspace, fetchWorkspaceStats, deleteFolder } from '../services/api';
 import DocumentCard from '../components/DocumentCard';
 import DocumentModal from '../components/DocumentModal';
@@ -9,6 +9,7 @@ import CreateFolderModal from '../components/CreateFolderModal';
 import Spinner from '../components/ui/Spinner';
 import EmptyState from '../components/ui/EmptyState';
 import { formatFileSize } from '../lib/fileUtils';
+import { useToast } from '../lib/ToastContext';
 
 const STATUSES = [
   { value: '',       label: 'All'    },
@@ -30,6 +31,7 @@ const StatCard = ({ icon: Icon, value, label, color }) => (
 );
 
 const Dashboard = ({ selectedWorkspace, currentUser }) => {
+  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedFolder = searchParams.get('folder') || null;
   const setSelectedFolder = useCallback((id) => {
@@ -76,7 +78,23 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setSearchParams({}, { replace: true }); }, [selectedWorkspace]); // clear folder when workspace changes
 
-  const currentFolderName = folders.find(f => f.id === selectedFolder)?.name;
+  // Full ancestor chain from workspace root down to the current folder —
+  // built client-side by walking parent_folder_id links, since `folders`
+  // already holds every folder in the workspace (all nesting levels).
+  const folderPath = [];
+  {
+    let node = folders.find(f => f.id === selectedFolder);
+    while (node) {
+      folderPath.unshift(node);
+      node = node.parent_folder_id ? folders.find(f => f.id === node.parent_folder_id) : null;
+    }
+  }
+  const currentFolder     = folderPath[folderPath.length - 1] || null;
+  const currentFolderName = currentFolder?.name;
+
+  // Only the folders that live directly inside the current view (root or the
+  // open folder) — `folders` itself holds the whole workspace tree.
+  const childFolders = folders.filter(f => (f.parent_folder_id || null) === selectedFolder);
 
   useEffect(() => {
     const parts = [];
@@ -89,8 +107,13 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
   const handleFolderDelete = async (e, folderId) => {
     e.stopPropagation();
     if (!confirm('Delete this folder?')) return;
-    await deleteFolder(folderId);
-    load();
+    try {
+      await deleteFolder(folderId);
+      load();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast(typeof detail === 'string' ? detail : 'Failed to delete folder.', 'error');
+    }
   };
 
   // ── No workspace selected ─────────────────────────────────────────────────
@@ -121,13 +144,27 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
               {workspace?.name || 'Dashboard'}
             </h2>
             {selectedFolder && (
-              <div className="flex items-center gap-1.5 mt-0.5">
+              <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                 <button onClick={() => setSelectedFolder(null)}
                   className="text-xs hover:underline" style={{ color: 'var(--c-accent-txt)' }}>
                   {workspace?.name}
                 </button>
-                <span className="text-xs" style={{ color: 'var(--c-text2)' }}>/</span>
-                <span className="text-xs" style={{ color: 'var(--c-text2)' }}>{currentFolderName}</span>
+                {folderPath.map((f, i) => {
+                  const isLast = i === folderPath.length - 1;
+                  return (
+                    <React.Fragment key={f.id}>
+                      <ChevronRight className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--c-text2)' }} />
+                      {isLast ? (
+                        <span className="text-xs" style={{ color: 'var(--c-text2)' }}>{f.name}</span>
+                      ) : (
+                        <button onClick={() => setSelectedFolder(f.id)}
+                          className="text-xs hover:underline" style={{ color: 'var(--c-accent-txt)' }}>
+                          {f.name}
+                        </button>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -175,12 +212,12 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
           </div>
         </div>
 
-        {/* Folders */}
-        {!selectedFolder && folders.length > 0 && (
+        {/* Folders (subfolders included — nesting is unlimited) */}
+        {childFolders.length > 0 && (
           <div className="fade-in-up">
             <p className="section-label mb-3">Folders</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-              {folders.map(folder => (
+              {childFolders.map(folder => (
                 <div key={folder.id} onClick={() => setSelectedFolder(folder.id)}
                   className="group relative flex flex-col items-center gap-2 p-4 rounded-xl cursor-pointer transition-all duration-150"
                   style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}
@@ -208,7 +245,7 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
 
         {/* Documents */}
         <div className="fade-in-up">
-          {!selectedFolder && folders.length > 0 && <p className="section-label mb-3">Documents</p>}
+          {childFolders.length > 0 && <p className="section-label mb-3">Documents</p>}
           {loading ? (
             <div className="flex justify-center py-16"><Spinner /></div>
           ) : documents.length > 0 ? (
@@ -224,13 +261,13 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
           ) : selectedFolder ? (
             <EmptyState icon={Upload}
               title="This folder is empty"
-              description="Upload a document here, or drag one in from the top-level view."
+              description="Upload a document here, or create a subfolder to organise further."
               action={
                 <button onClick={() => setShowUpload(true)} className="btn-primary text-sm">
                   <Upload className="w-4 h-4" /> Upload a Document
                 </button>
               } />
-          ) : folders.length > 0 ? (
+          ) : childFolders.length > 0 ? (
             <EmptyState icon={FolderOpen}
               title="No documents outside a folder"
               description="This workspace's documents are all organised inside the folders above." />
@@ -250,6 +287,7 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
       {showUpload && <UploadModal workspaceId={selectedWorkspace} folderId={selectedFolder}
         onClose={() => setShowUpload(false)} onComplete={() => { setShowUpload(false); load(); }} />}
       {showCreateFolder && <CreateFolderModal workspaceId={selectedWorkspace}
+        parentFolderId={selectedFolder} parentFolderName={currentFolderName}
         onClose={() => setShowCreateFolder(false)} onCreated={() => { setShowCreateFolder(false); load(); }} />}
       {selectedDoc && <DocumentModal document={selectedDoc} currentUser={currentUser}
         onClose={() => setSelectedDoc(null)} onUpdate={() => { setSelectedDoc(null); load(); }} />}

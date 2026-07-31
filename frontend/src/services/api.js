@@ -108,6 +108,9 @@ export const uploadNewVersion = (documentId, file) => {
 export const fetchCurrentUser = () => api.get('/users/me').then(r => r.data);
 export const fetchUsers       = () => api.get('/users').then(r => r.data);
 export const createUser       = (data) => api.post('/users', data).then(r => r.data);
+export const updateUser       = (id, data) => api.patch(`/users/${id}`, data).then(r => r.data);
+export const resetUserPassword = (id, newPassword) =>
+  api.post(`/users/${id}/reset-password`, { new_password: newPassword }).then(r => r.data);
 export const deleteUser       = (id)   => api.delete(`/users/${id}`).then(r => r.data);
 
 // ── WhatsApp Rules ─────────────────────────────────────────────────────────────
