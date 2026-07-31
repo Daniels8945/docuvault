@@ -1,13 +1,11 @@
 import React from 'react';
 import { format } from 'date-fns';
 import FileIcon from './FileIcon';
-import { formatFileSize, getFileLabel } from '../lib/fileUtils';
+import { formatFileSize } from '../lib/fileUtils';
 
 const DocumentCard = ({ document: doc, onClick }) => {
-  const { color } = getFileLabel(doc.file_type);
   return (
     <div onClick={onClick} className="file-card fade-in-up">
-      <div className="h-0.5 w-full" style={{ backgroundColor: color }} />
       <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-3">
           <FileIcon type={doc.file_type} size="md" />

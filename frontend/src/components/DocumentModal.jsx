@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Trash2, Upload, Pencil, Check, X, Clock, Eye, EyeOff, FolderInput } from 'lucide-react';
+import { Download, Trash2, Upload, Pencil, Check, X, Clock, Eye, EyeOff, FolderInput, FileWarning } from 'lucide-react';
 import { format } from 'date-fns';
 import FileIcon from './FileIcon';
 import Spinner from './ui/Spinner';
 import Modal from './ui/Modal';
-import { formatFileSize, getFileLabel } from '../lib/fileUtils';
+import { formatFileSize } from '../lib/fileUtils';
 import {
   fetchDocumentVersions, updateDocument, deleteDocument, uploadNewVersion,
   fetchPreviewBlob, downloadDocumentFile, fetchWorkspaces, fetchFolders,
@@ -24,12 +24,14 @@ const canPreview = (type = '') =>
 // a plain <img>/<embed> src or <a href> hits the API with no auth header and
 // gets a 401 JSON body back. Fetching as an authenticated blob and pointing
 // the element at a local object URL sidesteps that entirely.
-const PreviewPane = ({ docId, fileType, name }) => {
+const PreviewPane = ({ docId, fileType, name, onDownload }) => {
   const [blobUrl, setBlobUrl] = useState(null);
   const [error, setError]     = useState(false);
   const { toast } = useToast();
+  const supported = canPreview(fileType);
 
   useEffect(() => {
+    if (!supported) return;
     let cancelled = false;
     let objectUrl;
     setBlobUrl(null);
@@ -50,7 +52,24 @@ const PreviewPane = ({ docId, fileType, name }) => {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId]);
+  }, [docId, supported]);
+
+  if (!supported) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
+        <FileWarning className="w-8 h-8" style={{ color: 'var(--c-text3)' }} />
+        <div>
+          <p className="text-sm font-medium" style={{ color: 'var(--c-text)' }}>No inline preview for this file type</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--c-text2)' }}>Download the file to view it.</p>
+        </div>
+        {onDownload && (
+          <button onClick={onDownload} className="btn-secondary text-xs px-3 py-1.5">
+            <Download className="w-3.5 h-3.5" /> Download
+          </button>
+        )}
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -100,7 +119,7 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
   const { toast } = useToast();
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState(canPreview(doc.file_type) ? 'preview' : 'versions');
+  const [tab, setTab] = useState('preview');
   const [editName, setEditName] = useState(false);
   const [name, setName] = useState(doc.name);
   const [editTags, setEditTags] = useState(false);
@@ -116,9 +135,7 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
   const [moving, setMoving] = useState(false);
   const versionInputRef = useRef(null);
 
-  const { color } = getFileLabel(doc.file_type);
   const isAdmin = currentUser?.role === 'admin';
-  const showPreview = canPreview(doc.file_type);
 
   useEffect(() => {
     fetchDocumentVersions(doc.id)
@@ -199,7 +216,7 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
   };
 
   const TABS = [
-    ...(showPreview ? [{ id: 'preview', icon: Eye, label: 'Preview' }] : []),
+    { id: 'preview',  icon: Eye,   label: 'Preview'  },
     { id: 'versions', icon: Clock, label: 'Versions' },
   ];
 
@@ -210,8 +227,6 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
         {/* ── Left panel ─────────────────────── */}
         <div className="w-60 flex flex-col flex-shrink-0 overflow-y-auto"
           style={{ borderRight: '1px solid var(--c-border)' }}>
-          <div className="h-1 flex-shrink-0" style={{ backgroundColor: color }} />
-
           <div className="p-5 flex flex-col gap-4 flex-1">
             <div className="flex items-start justify-between">
               <FileIcon type={doc.file_type} size="lg" />
@@ -390,9 +405,9 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
 
           {/* Panel content */}
           <div className="flex-1 overflow-hidden" style={{ display: 'flex', flexDirection: 'column' }}>
-            {tab === 'preview' && showPreview && (
+            {tab === 'preview' && (
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <PreviewPane docId={doc.id} fileType={doc.file_type} name={doc.name} />
+                <PreviewPane docId={doc.id} fileType={doc.file_type} name={doc.name} onDownload={handleDownload} />
               </div>
             )}
 
