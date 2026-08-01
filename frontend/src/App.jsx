@@ -210,9 +210,16 @@ const AppShell = () => {
       />
 
       {/* ── Page content ─────────────────────────────────────────── */}
-      <main className="flex-1 min-w-0" style={{
-        paddingTop:    isMobile ? 56  : 0,
-        paddingBottom: isMobile ? 60  : 0,
+      {/* On mobile, `h-dvh` (dynamic viewport height) pins <main> to exactly
+          the space between the fixed top/bottom bars, and border-box folds
+          the padding into that height rather than adding to it. Without
+          this, each page's own `h-screen` (100vh) ignored the bars'
+          padding entirely and rendered ~116px taller than what was
+          actually visible, silently pushing content below the fold. */}
+      <main className={`flex-1 min-w-0 ${isMobile ? 'h-dvh overflow-hidden' : ''}`} style={{
+        paddingTop:    isMobile ? 56 : 0,
+        paddingBottom: isMobile ? 'calc(60px + env(safe-area-inset-bottom))' : 0,
+        boxSizing:     isMobile ? 'border-box' : undefined,
       }}>
         <Routes>
           <Route path="/"           element={<Dashboard selectedWorkspace={selectedWorkspace} currentUser={user} />} />

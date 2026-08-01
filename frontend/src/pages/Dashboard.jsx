@@ -109,7 +109,7 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
   // ── No workspace selected ─────────────────────────────────────────────────
   if (!selectedWorkspace) {
     return (
-      <div className="flex flex-col h-screen overflow-hidden">
+      <div className="flex flex-col h-full md:h-screen overflow-hidden">
         <div className="px-8 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--c-border)' }}>
           <h2 className="text-lg font-bold" style={{ color: 'var(--c-text)' }}>Dashboard</h2>
         </div>
@@ -125,7 +125,7 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-full md:h-screen overflow-hidden">
       {/* Top bar */}
       <div className="px-8 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--c-border)' }}>
         <div className="flex items-center justify-between">

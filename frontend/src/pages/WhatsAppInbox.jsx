@@ -97,7 +97,7 @@ const WhatsAppInbox = ({ currentUser }) => {
   const wsName = (id) => workspaces.find(w => w.id === id)?.name || id;
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-full md:h-screen overflow-hidden">
       <div className="px-8 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--c-border)' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">

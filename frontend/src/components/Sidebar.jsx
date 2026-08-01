@@ -211,11 +211,18 @@ const Sidebar = ({
   const orgWorkspaces = workspaces.filter(w => w.organization_id === selectedOrg && w.id !== 'ws_inbox').sort(byVisibility);
   const canManage = (resourceOwnerId) => currentUser?.role === 'admin' || currentUser?.id === resourceOwnerId;
 
+  // Selecting an org/workspace (or finishing creating one) navigates home —
+  // on mobile that's also the point where the drawer should get out of the way.
+  const goHome = () => {
+    navigate('/');
+    if (isMobile) onClose();
+  };
+
   const handleCreateOrg = async (name) => {
     const org = await createOrganization({ name });
     onOrgCreated(org);
     setShowNewOrg(false);
-    navigate('/');
+    goHome();
   };
   const handleRenameOrg = async (orgId, name) => {
     await updateOrganization(orgId, { name });
@@ -231,7 +238,7 @@ const Sidebar = ({
     const ws = await createWorkspace({ name, organization_id: selectedOrg });
     onWorkspaceCreated(ws);
     setShowNewWs(false);
-    navigate('/');
+    goHome();
   };
   const handleRenameWs = async (wsId, name) => {
     await updateWorkspace(wsId, { name });
@@ -345,7 +352,7 @@ const Sidebar = ({
                   style={{ display: 'flex', alignItems: 'center', gap: 9,
                     padding: '7px 8px', borderRadius: 9, cursor: 'pointer',
                     background: isSelected ? 'var(--c-accent-bg)' : 'transparent', transition: 'background 0.12s' }}
-                  onClick={() => { onSelectOrg(org.id); navigate('/'); }}
+                  onClick={() => { onSelectOrg(org.id); goHome(); }}
                   onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--c-hover)'; }}
                   onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}>
                   <div style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0,
@@ -465,7 +472,7 @@ const Sidebar = ({
                     style={{ display: 'flex', alignItems: 'center', gap: 8,
                       padding: '7px 8px', borderRadius: 9, cursor: 'pointer',
                       background: isActive ? 'var(--c-accent-bg)' : 'transparent', transition: 'background 0.12s' }}
-                    onClick={() => { onSelectWorkspace(ws.id); navigate('/'); }}
+                    onClick={() => { onSelectWorkspace(ws.id); goHome(); }}
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--c-hover)'; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
                     <FolderOpen size={14} style={{ flexShrink: 0, color: isActive ? 'var(--c-accent-txt)' : 'var(--c-text2)' }} />
