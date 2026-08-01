@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Query
 from fastapi.responses import StreamingResponse
-from sqlmodel import Session, select
+from sqlmodel import Session, select, or_
 
 import storage
 from auth import get_current_user, require_admin, require_editor
@@ -21,6 +21,18 @@ router = APIRouter(prefix="/api/documents", tags=["Documents"])
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
+def _visible_to(user: User):
+    """SQL filter: public documents, or private documents owned by this user."""
+    return or_(Document.visibility != "private", Document.owner_id == user.id)
+
+
+def _assert_visible(document: Document, user: User):
+    """A private document is invisible to everyone but its owner — no exceptions,
+    not even admin. Raise 404 (not 403) so its existence isn't leaked."""
+    if document.visibility == "private" and document.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+
 @router.get("", response_model=List[DocumentRead])
 def get_documents(
     workspace_id: Optional[str] = None,
@@ -31,9 +43,9 @@ def get_documents(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     session: Session = Depends(get_session),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    query = select(Document)
+    query = select(Document).where(_visible_to(current_user))
     if workspace_id:
         query = query.where(Document.workspace_id == workspace_id)
     if folder_id:
@@ -54,9 +66,13 @@ async def upload_document(
     workspace_id: Optional[str] = Form(None),
     folder_id: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
+    visibility: str = Form("public"),
     session: Session = Depends(get_session),
     current_user: User = Depends(require_editor),
 ):
+    if visibility not in ("public", "private"):
+        raise HTTPException(status_code=400, detail="visibility must be 'public' or 'private'")
+
     file_bytes = await file.read()
 
     if len(file_bytes) > MAX_UPLOAD_BYTES:
@@ -90,6 +106,8 @@ async def upload_document(
         workspace_id=effective_workspace,
         folder_id=folder_id,
         uploaded_by=current_user.name,
+        owner_id=current_user.id,
+        visibility=visibility,
         status="active",
         current_version=1,
     )
@@ -125,10 +143,11 @@ async def upload_document(
 
 
 @router.get("/{document_id}", response_model=DocumentRead)
-def get_document(document_id: str, session: Session = Depends(get_session), _user: User = Depends(get_current_user)):
+def get_document(document_id: str, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+    _assert_visible(document, current_user)
     return document
 
 
@@ -137,12 +156,23 @@ def update_document(
     document_id: str,
     document_update: DocumentUpdate,
     session: Session = Depends(get_session),
-    _editor: User = Depends(require_editor),
+    current_user: User = Depends(require_editor),
 ):
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    for key, value in document_update.dict(exclude_unset=True).items():
+    _assert_visible(document, current_user)
+
+    data = document_update.dict(exclude_unset=True)
+    if "visibility" in data:
+        if document.owner_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Only the document owner can change its visibility.")
+        if data["visibility"] == "private" and not document.owner_id:
+            raise HTTPException(status_code=400, detail="This document has no owner and cannot be made private.")
+        if data["visibility"] not in ("public", "private"):
+            raise HTTPException(status_code=400, detail="visibility must be 'public' or 'private'")
+
+    for key, value in data.items():
         setattr(document, key, value)
     session.add(document)
     session.commit()
@@ -151,10 +181,11 @@ def update_document(
 
 
 @router.get("/{document_id}/download")
-def download_document(document_id: str, session: Session = Depends(get_session), _user: User = Depends(get_current_user)):
+def download_document(document_id: str, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+    _assert_visible(document, current_user)
     safe_name = document.name.encode("ascii", errors="replace").decode("ascii")
     log.info("Download: id=%s  name=%s", document_id, document.name)
     return StreamingResponse(
@@ -165,10 +196,11 @@ def download_document(document_id: str, session: Session = Depends(get_session),
 
 
 @router.get("/{document_id}/preview")
-def preview_document(document_id: str, session: Session = Depends(get_session), _user: User = Depends(get_current_user)):
+def preview_document(document_id: str, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+    _assert_visible(document, current_user)
     return StreamingResponse(
         storage.stream_file(document.file_path),
         media_type=document.file_type or "application/octet-stream",
@@ -177,11 +209,12 @@ def preview_document(document_id: str, session: Session = Depends(get_session), 
 
 
 @router.get("/{document_id}/url")
-def get_document_url(document_id: str, hours: int = 1, session: Session = Depends(get_session), _user: User = Depends(get_current_user)):
+def get_document_url(document_id: str, hours: int = 1, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     """Return a short-lived presigned URL for direct browser access."""
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+    _assert_visible(document, current_user)
     try:
         url = storage.get_presigned_url(document.file_path, expires_hours=hours)
     except Exception as exc:
@@ -191,10 +224,11 @@ def get_document_url(document_id: str, hours: int = 1, session: Session = Depend
 
 
 @router.delete("/{document_id}")
-def delete_document(document_id: str, session: Session = Depends(get_session), _editor: User = Depends(require_editor)):
+def delete_document(document_id: str, session: Session = Depends(get_session), current_user: User = Depends(require_editor)):
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+    _assert_visible(document, current_user)
     for v in session.exec(select(DocumentVersion).where(DocumentVersion.document_id == document_id)).all():
         session.delete(v)
     for a in session.exec(select(Approval).where(Approval.document_id == document_id)).all():
@@ -210,7 +244,11 @@ def delete_document(document_id: str, session: Session = Depends(get_session), _
 
 
 @router.get("/{document_id}/versions", response_model=List[DocumentVersionRead])
-def get_document_versions(document_id: str, session: Session = Depends(get_session), _user: User = Depends(get_current_user)):
+def get_document_versions(document_id: str, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
+    document = session.get(Document, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    _assert_visible(document, current_user)
     return session.exec(
         select(DocumentVersion).where(DocumentVersion.document_id == document_id)
     ).all()
@@ -226,6 +264,7 @@ async def upload_new_version(
     document = session.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+    _assert_visible(document, current_user)
 
     file_bytes = await file.read()
 

@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings as SettingsIcon, Plus, Trash2, Pencil, Key, Building2, FolderOpen, MessageCircle, Users, X, Eye, EyeOff } from 'lucide-react';
+import { Settings as SettingsIcon, Plus, Trash2, Pencil, Key, Trophy, Building2, FolderOpen, MessageCircle, Users, X, Eye, EyeOff } from 'lucide-react';
 import {
   fetchOrganizations, createOrganization,
   fetchWorkspaces, createWorkspace, deleteWorkspace,
   fetchWhatsAppRules, deleteWhatsAppRule,
   fetchUsers, createUser, updateUser, resetUserPassword, deleteUser,
+  fetchLeaderboard,
 } from '../services/api';
 import Spinner from '../components/ui/Spinner';
+import { formatFileSize } from '../lib/fileUtils';
 import { useToast } from '../lib/ToastContext';
 
 const ROLE_LABELS = { admin: 'Admin', editor: 'Editor', viewer: 'Viewer' };
@@ -24,7 +26,10 @@ const Settings = ({ currentUser }) => {
     { id: 'orgs',       label: 'Organizations', icon: Building2     },
     { id: 'workspaces', label: 'Workspaces',    icon: FolderOpen    },
     { id: 'whatsapp',   label: 'Routing Rules', icon: MessageCircle },
-    ...(isAdmin ? [{ id: 'users', label: 'Users', icon: Users }] : []),
+    ...(isAdmin ? [
+      { id: 'users',       label: 'Users',       icon: Users  },
+      { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
+    ] : []),
   ];
 
   const [tab, setTab]           = useState('orgs');
@@ -32,6 +37,7 @@ const Settings = ({ currentUser }) => {
   const [workspaces, setWorkspaces] = useState([]);
   const [rules, setRules]       = useState([]);
   const [users, setUsers]       = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving]     = useState(false);
@@ -53,8 +59,9 @@ const Settings = ({ currentUser }) => {
       const [o, w, r] = await Promise.all([fetchOrganizations(), fetchWorkspaces(), fetchWhatsAppRules()]);
       setOrgs(o); setWorkspaces(w); setRules(r);
       if (isAdmin) {
-        const u = await fetchUsers();
+        const [u, lb] = await Promise.all([fetchUsers(), fetchLeaderboard()]);
         setUsers(u);
+        setLeaderboard(lb);
       }
     } finally { setLoading(false); }
   }, [isAdmin]);
@@ -166,10 +173,10 @@ const Settings = ({ currentUser }) => {
         </div>
 
         {loading ? <Spinner /> : (
-          <div className="max-w-xl space-y-4 fade-in-up">
+          <div className={`${tab === 'leaderboard' ? 'max-w-3xl' : 'max-w-xl'} space-y-4 fade-in-up`}>
 
             {/* Add button */}
-            {tab !== 'whatsapp' && !showForm && (
+            {tab !== 'whatsapp' && tab !== 'leaderboard' && !showForm && (
               <button onClick={() => { setShowForm(true); setFormData({ role: 'viewer' }); }} className="btn-secondary text-xs">
                 <Plus className="w-3.5 h-3.5" />
                 {tab === 'orgs' ? 'Add Organization' : tab === 'workspaces' ? 'Add Workspace' : 'Add User'}
@@ -456,6 +463,58 @@ const Settings = ({ currentUser }) => {
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* Leaderboard (admin only) */}
+            {tab === 'leaderboard' && (
+              leaderboard.length === 0 ? (
+                <p className="text-xs p-5 rounded-xl" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', color: 'var(--c-text2)' }}>
+                  No activity yet.
+                </p>
+              ) : (
+                <div className="rounded-xl overflow-x-auto"
+                  style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
+                  <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+                        {['#', 'User', 'Role', 'Documents', 'Folders', 'Storage'].map(h => (
+                          <th key={h} className="text-left px-4 py-3 text-xs font-semibold"
+                            style={{ color: 'var(--c-text2)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {leaderboard.map((row, i) => (
+                        <tr key={row.user_id}
+                          style={i < leaderboard.length - 1 ? { borderBottom: '1px solid var(--c-border)' } : {}}>
+                          <td className="px-4 py-3 text-xs font-semibold" style={{ color: 'var(--c-text2)' }}>
+                            {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-medium" style={{ color: 'var(--c-text)' }}>{row.name}</p>
+                            <p className="text-xs" style={{ color: 'var(--c-text2)' }}>{row.email}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                              style={ROLE_COLORS[row.role] || ROLE_COLORS.viewer}>
+                              {ROLE_LABELS[row.role] || row.role}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm" style={{ color: 'var(--c-text)', fontVariantNumeric: 'tabular-nums' }}>
+                            {row.documents_uploaded}
+                          </td>
+                          <td className="px-4 py-3 text-sm" style={{ color: 'var(--c-text)', fontVariantNumeric: 'tabular-nums' }}>
+                            {row.folders_created}
+                          </td>
+                          <td className="px-4 py-3 text-sm" style={{ color: 'var(--c-text)', fontVariantNumeric: 'tabular-nums' }}>
+                            {formatFileSize(row.storage_bytes)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
             )}
 
           </div>

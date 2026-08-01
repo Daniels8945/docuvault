@@ -1,5 +1,6 @@
 import React from 'react';
 import { format } from 'date-fns';
+import { Lock } from 'lucide-react';
 import FileIcon from './FileIcon';
 import { formatFileSize } from '../lib/fileUtils';
 
@@ -9,9 +10,14 @@ const DocumentCard = ({ document: doc, onClick }) => {
       <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-3">
           <FileIcon type={doc.file_type} size="md" />
-          <span className="text-xs flex-shrink-0 mt-1" style={{ color: 'var(--c-text2)' }}>
-            {formatFileSize(doc.file_size)}
-          </span>
+          <div className="flex items-center gap-1.5 flex-shrink-0 mt-1">
+            {doc.visibility === 'private' && (
+              <Lock className="w-3 h-3" style={{ color: 'var(--c-text2)' }} />
+            )}
+            <span className="text-xs" style={{ color: 'var(--c-text2)' }}>
+              {formatFileSize(doc.file_size)}
+            </span>
+          </div>
         </div>
         <h3 className="font-semibold text-sm leading-snug mb-1 line-clamp-2"
           style={{ color: 'var(--c-text)' }} title={doc.name}>

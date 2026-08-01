@@ -64,8 +64,9 @@ class FolderBase(SQLModel):
 
 class Folder(FolderBase, table=True):
     id: str = Field(default_factory=lambda: f"fld_{uuid.uuid4().hex[:8]}", primary_key=True)
+    created_by: Optional[str] = Field(default=None, foreign_key="user.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     # Relationships
     workspace: Workspace = Relationship(back_populates="folders")
     documents: List["Document"] = Relationship(back_populates="folder")
@@ -73,8 +74,14 @@ class Folder(FolderBase, table=True):
 class FolderCreate(FolderBase):
     pass
 
+class FolderUpdate(SQLModel):
+    name: Optional[str] = None
+    parent_folder_id: Optional[str] = None
+
 class FolderRead(FolderBase):
     id: str
+    created_by: Optional[str] = None
+    created_by_name: Optional[str] = None
     created_at: datetime
     document_count: int = 0
 
@@ -89,6 +96,8 @@ class DocumentBase(SQLModel):
     tags: Optional[List[str]] = None
     status: str = Field(default="draft")  # draft, pending_approval, approved, rejected
     uploaded_by: str
+    owner_id: Optional[str] = Field(default=None, foreign_key="user.id")
+    visibility: str = Field(default="public")  # public, private — private is visible only to owner_id
 
 class Document(DocumentBase, table=True):
     id: str = Field(default_factory=lambda: f"doc_{uuid.uuid4().hex[:12]}", primary_key=True)
@@ -113,6 +122,7 @@ class DocumentUpdate(SQLModel):
     status: Optional[str] = None
     folder_id: Optional[str] = None
     workspace_id: Optional[str] = None
+    visibility: Optional[str] = None
 
 class DocumentRead(DocumentBase):
     id: str

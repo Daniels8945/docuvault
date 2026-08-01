@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Trash2, Upload, Pencil, Check, X, Clock, Eye, EyeOff, FolderInput, FileWarning } from 'lucide-react';
+import { Download, Trash2, Upload, Pencil, Check, X, Clock, Eye, EyeOff, FolderInput, FileWarning, Lock, Globe } from 'lucide-react';
 import { format } from 'date-fns';
 import FileIcon from './FileIcon';
 import Spinner from './ui/Spinner';
@@ -197,6 +197,9 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
   const versionInputRef = useRef(null);
 
   const isAdmin = currentUser?.role === 'admin';
+  const isOwner = !!currentUser?.id && currentUser.id === doc.owner_id;
+  const isPrivate = doc.visibility === 'private';
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
 
   useEffect(() => {
     fetchDocumentVersions(doc.id)
@@ -257,6 +260,21 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
       toast('Download failed — please try again.', 'error');
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const toggleVisibility = async () => {
+    setTogglingVisibility(true);
+    try {
+      const next = isPrivate ? 'public' : 'private';
+      await updateDocument(doc.id, { visibility: next });
+      toast(next === 'private' ? 'Document is now private' : 'Document is now visible to everyone', 'success');
+      onUpdate();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast(typeof detail === 'string' ? detail : 'Could not change visibility.', 'error');
+    } finally {
+      setTogglingVisibility(false);
     }
   };
 
@@ -329,6 +347,25 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
               <p>Version {doc.current_version}</p>
               <p>{format(new Date(doc.created_at), 'MMM d, yyyy · h:mm a')}</p>
               <p>By {doc.uploaded_by}</p>
+            </div>
+
+            {/* Visibility */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                {isPrivate
+                  ? <Lock className="w-3.5 h-3.5" style={{ color: 'var(--c-text2)' }} />
+                  : <Globe className="w-3.5 h-3.5" style={{ color: 'var(--c-text2)' }} />}
+                <span className="text-xs font-medium" style={{ color: 'var(--c-text)' }}>
+                  {isPrivate ? 'Private — only you can see this' : 'Visible to everyone'}
+                </span>
+              </div>
+              {isOwner && (
+                <button onClick={toggleVisibility} disabled={togglingVisibility}
+                  className="text-xs font-medium hover:underline disabled:opacity-50"
+                  style={{ color: 'var(--c-accent-txt)' }}>
+                  {togglingVisibility ? '…' : isPrivate ? 'Make public' : 'Make private'}
+                </button>
+              )}
             </div>
 
             {/* Tags */}

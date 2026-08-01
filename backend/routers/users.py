@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 
 from auth import (
     create_access_token,
@@ -15,7 +15,7 @@ from auth import (
     verify_password,
 )
 from database import get_session
-from models import User, UserCreate, UserRead, UserUpdate, UserPasswordReset
+from models import User, UserCreate, UserRead, UserUpdate, UserPasswordReset, Document, Folder
 
 log = logging.getLogger("docuvault.users")
 
@@ -124,6 +124,47 @@ def list_users(
     _admin: User = Depends(require_admin),
 ):
     return session.exec(select(User)).all()
+
+
+@router.get("/users/leaderboard", summary="Per-user activity totals (admin only)")
+def get_leaderboard(
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+):
+    """Aggregate counts, not content — safe to show even for private documents,
+    since it never exposes what was uploaded, only how much."""
+    users = session.exec(select(User)).all()
+
+    doc_counts = dict(session.exec(
+        select(Document.owner_id, func.count(Document.id))
+        .where(Document.owner_id.isnot(None))
+        .group_by(Document.owner_id)
+    ).all())
+    storage = dict(session.exec(
+        select(Document.owner_id, func.sum(Document.file_size))
+        .where(Document.owner_id.isnot(None))
+        .group_by(Document.owner_id)
+    ).all())
+    folder_counts = dict(session.exec(
+        select(Folder.created_by, func.count(Folder.id))
+        .where(Folder.created_by.isnot(None))
+        .group_by(Folder.created_by)
+    ).all())
+
+    rows = [
+        {
+            "user_id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "role": u.role,
+            "documents_uploaded": doc_counts.get(u.id, 0),
+            "folders_created": folder_counts.get(u.id, 0),
+            "storage_bytes": storage.get(u.id) or 0,
+        }
+        for u in users
+    ]
+    rows.sort(key=lambda r: r["documents_uploaded"], reverse=True)
+    return rows
 
 
 @router.post("/users", response_model=UserRead, summary="Create a user (admin only)")

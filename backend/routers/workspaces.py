@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Depends
-from sqlmodel import Session, select
+from sqlmodel import Session, select, or_
 from typing import List, Optional
 
 from auth import get_current_user, require_admin, require_editor
@@ -52,7 +52,7 @@ def get_workspace(
 def get_workspace_stats(
     workspace_id: str,
     session: Session = Depends(get_session),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Aggregate totals across the whole workspace (all folders + root),
     unlike the document grid which only lists root-level documents."""
@@ -60,7 +60,12 @@ def get_workspace_stats(
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    documents = session.exec(select(Document).where(Document.workspace_id == workspace_id)).all()
+    documents = session.exec(
+        select(Document).where(
+            Document.workspace_id == workspace_id,
+            or_(Document.visibility != "private", Document.owner_id == current_user.id),
+        )
+    ).all()
     folder_count = len(session.exec(select(Folder).where(Folder.workspace_id == workspace_id)).all())
 
     now = datetime.utcnow().isocalendar()

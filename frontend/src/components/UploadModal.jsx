@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, File, X, CheckCircle } from 'lucide-react';
+import { Upload, File, X, CheckCircle, Lock } from 'lucide-react';
 import Modal from './ui/Modal';
 import { uploadDocument } from '../services/api';
 import { formatFileSize } from '../lib/fileUtils';
@@ -9,6 +9,7 @@ const UploadModal = ({ workspaceId, folderId, onClose, onComplete }) => {
   const { toast } = useToast();
   const [files, setFiles]         = useState([]);
   const [tags, setTags]           = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver]   = useState(false);
   const [done, setDone]           = useState(false);
@@ -22,7 +23,10 @@ const UploadModal = ({ workspaceId, folderId, onClose, onComplete }) => {
     setUploading(true);
     try {
       for (const file of files) {
-        await uploadDocument(file, { workspace_id: workspaceId, folder_id: folderId, tags });
+        await uploadDocument(file, {
+          workspace_id: workspaceId, folder_id: folderId, tags,
+          visibility: isPrivate ? 'private' : 'public',
+        });
       }
       setDone(true);
       const label = files.length === 1 ? `"${files[0].name}"` : `${files.length} files`;
@@ -115,6 +119,21 @@ const UploadModal = ({ workspaceId, folderId, onClose, onComplete }) => {
             className="input-field w-full"
           />
         </div>
+
+        <label className="flex items-start gap-3 p-3 rounded-lg cursor-pointer"
+          style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)' }}>
+          <input type="checkbox" checked={isPrivate} onChange={e => setIsPrivate(e.target.checked)}
+            className="mt-0.5" style={{ accentColor: 'var(--c-accent)' }} />
+          <div className="flex-1">
+            <div className="flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5" style={{ color: 'var(--c-text2)' }} />
+              <span className="text-sm font-medium" style={{ color: 'var(--c-text)' }}>Keep this private</span>
+            </div>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--c-text2)' }}>
+              Only visible to you — not even admins can see it. You can make it public later.
+            </p>
+          </div>
+        </label>
 
         <div className="flex gap-3 pt-2">
           <button

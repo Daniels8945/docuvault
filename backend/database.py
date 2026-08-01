@@ -48,6 +48,30 @@ def init_db():
                 conn.commit()
                 log.info("Migration: added role column")
 
+            existing_doc_cols = {
+                row[0] for row in conn.execute(
+                    text("SELECT column_name FROM information_schema.columns WHERE table_name='document'")
+                )
+            }
+            if "owner_id" not in existing_doc_cols:
+                conn.execute(text('ALTER TABLE "document" ADD COLUMN owner_id VARCHAR'))
+                conn.commit()
+                log.info("Migration: added document.owner_id column")
+            if "visibility" not in existing_doc_cols:
+                conn.execute(text("ALTER TABLE \"document\" ADD COLUMN visibility VARCHAR NOT NULL DEFAULT 'public'"))
+                conn.commit()
+                log.info("Migration: added document.visibility column")
+
+            existing_folder_cols = {
+                row[0] for row in conn.execute(
+                    text("SELECT column_name FROM information_schema.columns WHERE table_name='folder'")
+                )
+            }
+            if "created_by" not in existing_folder_cols:
+                conn.execute(text('ALTER TABLE "folder" ADD COLUMN created_by VARCHAR'))
+                conn.commit()
+                log.info("Migration: added folder.created_by column")
+
     with Session(engine) as session:
         from models import Organization, Workspace, Folder
 

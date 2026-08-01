@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronRight, Upload, FolderPlus, Search, FolderOpen, Trash2, FileText, HardDrive, Calendar, Building2 } from 'lucide-react';
-import { fetchDocuments, fetchFolders, fetchWorkspace, fetchWorkspaceStats, deleteFolder } from '../services/api';
+import { ChevronRight, Upload, FolderPlus, Search, FolderOpen, FileText, HardDrive, Calendar, Building2 } from 'lucide-react';
+import { fetchDocuments, fetchFolders, fetchWorkspace, fetchWorkspaceStats } from '../services/api';
 import DocumentCard from '../components/DocumentCard';
 import DocumentModal from '../components/DocumentModal';
 import UploadModal from '../components/UploadModal';
 import CreateFolderModal from '../components/CreateFolderModal';
+import FolderCard from '../components/FolderCard';
 import Spinner from '../components/ui/Spinner';
 import EmptyState from '../components/ui/EmptyState';
 import { formatFileSize } from '../lib/fileUtils';
-import { useToast } from '../lib/ToastContext';
 
 const STATUSES = [
   { value: '',       label: 'All'    },
@@ -31,7 +31,6 @@ const StatCard = ({ icon: Icon, value, label, color }) => (
 );
 
 const Dashboard = ({ selectedWorkspace, currentUser }) => {
-  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedFolder = searchParams.get('folder') || null;
   const setSelectedFolder = useCallback((id) => {
@@ -104,17 +103,8 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
     document.title = parts.join(' | ');
   }, [workspace, currentFolderName]);
 
-  const handleFolderDelete = async (e, folderId) => {
-    e.stopPropagation();
-    if (!confirm('Delete this folder?')) return;
-    try {
-      await deleteFolder(folderId);
-      load();
-    } catch (err) {
-      const detail = err?.response?.data?.detail;
-      toast(typeof detail === 'string' ? detail : 'Failed to delete folder.', 'error');
-    }
-  };
+  const isAdmin  = currentUser?.role === 'admin';
+  const canEdit  = isAdmin || currentUser?.role === 'editor';
 
   // ── No workspace selected ─────────────────────────────────────────────────
   if (!selectedWorkspace) {
@@ -218,26 +208,9 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
             <p className="section-label mb-3">Folders</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
               {childFolders.map(folder => (
-                <div key={folder.id} onClick={() => setSelectedFolder(folder.id)}
-                  className="group relative flex flex-col items-center gap-2 p-4 rounded-xl cursor-pointer transition-all duration-150"
-                  style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--c-hover)'; e.currentTarget.style.borderColor = 'var(--c-border2)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'var(--c-surface)'; e.currentTarget.style.borderColor = 'var(--c-border)'; }}>
-                  <FolderOpen className="w-7 h-7" style={{ color: 'var(--c-accent-txt)' }} />
-                  <p className="text-xs font-medium text-center truncate w-full" style={{ color: 'var(--c-text)' }}>{folder.name}</p>
-                  <p className="text-xs" style={{ color: 'var(--c-text2)' }}>
-                    {folder.document_count ?? 0} docs
-                  </p>
-                  {currentUser?.role === 'admin' && (
-                    <button onClick={e => handleFolderDelete(e, folder.id)}
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition p-0.5"
-                      style={{ color: 'var(--c-text2)' }}
-                      onMouseEnter={e => e.currentTarget.style.color = 'var(--c-danger)'}
-                      onMouseLeave={e => e.currentTarget.style.color = 'var(--c-text2)'}>
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
+                <FolderCard key={folder.id} folder={folder} allFolders={folders}
+                  canEdit={canEdit} isAdmin={isAdmin}
+                  onOpen={setSelectedFolder} onChanged={load} />
               ))}
             </div>
           </div>
