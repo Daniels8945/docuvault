@@ -7,31 +7,68 @@ import Modal from './ui/Modal';
 import { formatFileSize } from '../lib/fileUtils';
 import {
   fetchDocumentVersions, updateDocument, deleteDocument, uploadNewVersion,
-  fetchPreviewBlob, downloadDocumentFile, fetchWorkspaces, fetchFolders,
+  fetchPreviewBlob, fetchDocumentUrl, downloadDocumentFile, fetchWorkspaces, fetchFolders,
 } from '../services/api';
 import { useToast } from '../lib/ToastContext';
 
-const PREVIEWABLE_TYPES = [
+// Rendered directly in-browser from an authenticated blob.
+const NATIVE_TYPES = [
   'application/pdf',
   'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
   'text/plain',
 ];
+const isNativeType = (type = '') => NATIVE_TYPES.includes(type) || type.startsWith('image/');
 
-const canPreview = (type = '') =>
-  PREVIEWABLE_TYPES.includes(type) || type.startsWith('image/');
+// No in-browser renderer exists for these — handed to Microsoft's Office
+// Online Viewer instead, which needs a short-lived public link to fetch
+// the file itself (it can't send our JWT header).
+const OFFICE_TYPES = [
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+];
+const isOfficeType = (type = '') => OFFICE_TYPES.includes(type);
+
+const UnsupportedPreview = ({ onDownload, message }) => (
+  <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
+    <FileWarning className="w-8 h-8" style={{ color: 'var(--c-text3)' }} />
+    <div>
+      <p className="text-sm font-medium" style={{ color: 'var(--c-text)' }}>
+        {message || 'No inline preview for this file type'}
+      </p>
+      <p className="text-xs mt-1" style={{ color: 'var(--c-text2)' }}>Download the file to view it.</p>
+    </div>
+    {onDownload && (
+      <button onClick={onDownload} className="btn-secondary text-xs px-3 py-1.5">
+        <Download className="w-3.5 h-3.5" /> Download
+      </button>
+    )}
+  </div>
+);
+
+const PreviewPane = ({ docId, fileType, name, onDownload }) => {
+  if (isOfficeType(fileType)) {
+    return <OfficePreview docId={docId} name={name} onDownload={onDownload} />;
+  }
+  if (!isNativeType(fileType)) {
+    return <UnsupportedPreview onDownload={onDownload} />;
+  }
+  return <NativePreview docId={docId} fileType={fileType} name={name} />;
+};
 
 // Preview/download need the JWT bearer token, which only axios attaches —
 // a plain <img>/<embed> src or <a href> hits the API with no auth header and
 // gets a 401 JSON body back. Fetching as an authenticated blob and pointing
 // the element at a local object URL sidesteps that entirely.
-const PreviewPane = ({ docId, fileType, name, onDownload }) => {
+const NativePreview = ({ docId, fileType, name }) => {
   const [blobUrl, setBlobUrl] = useState(null);
   const [error, setError]     = useState(false);
   const { toast } = useToast();
-  const supported = canPreview(fileType);
 
   useEffect(() => {
-    if (!supported) return;
     let cancelled = false;
     let objectUrl;
     setBlobUrl(null);
@@ -52,24 +89,7 @@ const PreviewPane = ({ docId, fileType, name, onDownload }) => {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId, supported]);
-
-  if (!supported) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
-        <FileWarning className="w-8 h-8" style={{ color: 'var(--c-text3)' }} />
-        <div>
-          <p className="text-sm font-medium" style={{ color: 'var(--c-text)' }}>No inline preview for this file type</p>
-          <p className="text-xs mt-1" style={{ color: 'var(--c-text2)' }}>Download the file to view it.</p>
-        </div>
-        {onDownload && (
-          <button onClick={onDownload} className="btn-secondary text-xs px-3 py-1.5">
-            <Download className="w-3.5 h-3.5" /> Download
-          </button>
-        )}
-      </div>
-    );
-  }
+  }, [docId]);
 
   if (error) {
     return (
@@ -102,6 +122,47 @@ const PreviewPane = ({ docId, fileType, name, onDownload }) => {
     return <TextPreview blobUrl={blobUrl} />;
   }
   return null;
+};
+
+// Word/Excel/PowerPoint have no in-browser renderer, so a short-lived
+// presigned S3 link is generated and handed to Microsoft's public viewer,
+// which fetches the file directly (never touches our auth at all).
+const OfficePreview = ({ docId, name, onDownload }) => {
+  const [viewerUrl, setViewerUrl] = useState(null);
+  const [error, setError]         = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    let cancelled = false;
+    setViewerUrl(null);
+    setError(false);
+    fetchDocumentUrl(docId, 1)
+      .then(({ url }) => {
+        if (cancelled) return;
+        setViewerUrl(`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError(true);
+        toast('Could not load preview.', 'error');
+      });
+    return () => { cancelled = true; };
+  }, [docId]);
+
+  if (error) {
+    return <UnsupportedPreview onDownload={onDownload} message="Preview unavailable" />;
+  }
+  if (!viewerUrl) {
+    return <div className="flex items-center justify-center h-full"><Spinner /></div>;
+  }
+
+  return (
+    <iframe
+      src={viewerUrl}
+      title={name}
+      style={{ display: 'block', width: '100%', height: '100%', border: 'none', background: 'var(--c-bg)' }}
+    />
+  );
 };
 
 const TextPreview = ({ blobUrl }) => {

@@ -82,6 +82,12 @@ export const deleteDocument   = (id)       => api.delete(`/documents/${id}`).the
 export const fetchPreviewBlob = (id) =>
   api.get(`/documents/${id}/preview`, { responseType: 'blob' }).then(r => r.data);
 
+// Short-lived, publicly-fetchable link — used to hand Office/Word/Excel files
+// to Microsoft's Office Online Viewer, which fetches the file itself and
+// can't send our JWT header.
+export const fetchDocumentUrl = (id, hours = 1) =>
+  api.get(`/documents/${id}/url`, { params: { hours } }).then(r => r.data);
+
 export const downloadDocumentFile = async (id, filename) => {
   const blob = await api.get(`/documents/${id}/download`, { responseType: 'blob' }).then(r => r.data);
   const url = URL.createObjectURL(blob);
