@@ -4,13 +4,13 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select, or_
 from typing import List, Optional
 
-from auth import get_current_user, require_admin, require_editor
+from auth import get_current_user
 from database import get_session
-from permissions import visible_workspace_ids, workspace_visible, can_manage_sharing
+from permissions import visible_workspace_ids, workspace_visible, organization_visible, can_manage_sharing
 from models import (
     Workspace, WorkspaceCreate, WorkspaceRead, WorkspaceUpdate,
     WorkspaceMember, WorkspaceMemberRead,
-    Document, Folder, User,
+    Document, Folder, Organization, User,
 )
 
 router = APIRouter(prefix="/api/workspaces", tags=["Workspaces"])
@@ -35,9 +35,14 @@ def get_workspaces(
 def create_workspace(
     workspace: WorkspaceCreate,
     session: Session = Depends(get_session),
-    editor: User = Depends(require_editor),
+    current_user: User = Depends(get_current_user),
 ):
-    db_workspace = Workspace(**workspace.dict(), owner_id=editor.id)
+    """Any signed-in user can create a workspace — it belongs to them and
+    defaults to public. They just need to be able to see the parent org."""
+    org = session.get(Organization, workspace.organization_id)
+    if not org or not organization_visible(org, session, current_user):
+        raise HTTPException(status_code=404, detail="Organization not found")
+    db_workspace = Workspace(**workspace.dict(), owner_id=current_user.id)
     session.add(db_workspace)
     session.commit()
     session.refresh(db_workspace)
@@ -96,13 +101,17 @@ def update_workspace(
     workspace_id: str,
     ws_update: WorkspaceUpdate,
     session: Session = Depends(get_session),
-    current_user: User = Depends(require_editor),
+    current_user: User = Depends(get_current_user),
 ):
     workspace = session.get(Workspace, workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
     if not workspace_visible(workspace, session, current_user):
         raise HTTPException(status_code=404, detail="Workspace not found")
+    # Editors/admins may edit any workspace they can see (existing broad
+    # capability); a non-editor may still edit a workspace they personally own.
+    if current_user.role not in ("admin", "editor") and current_user.id != workspace.owner_id:
+        raise HTTPException(status_code=403, detail="Only an editor/admin or this workspace's owner can edit it")
 
     data = ws_update.dict(exclude_unset=True)
     if "visibility" in data and not can_manage_sharing(workspace.owner_id, current_user):
@@ -202,11 +211,15 @@ def remove_workspace_member(
 def delete_workspace(
     workspace_id: str,
     session: Session = Depends(get_session),
-    _admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ):
     workspace = session.get(Workspace, workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
+    if not workspace_visible(workspace, session, current_user):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if not can_manage_sharing(workspace.owner_id, current_user):
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can delete this workspace")
     for member in session.exec(
         select(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id)
     ).all():

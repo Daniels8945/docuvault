@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Clock, MessageCircle, Settings, CheckSquare,
   FolderOpen, Sun, Moon, Plus, Trash2, Check, X, Pencil, Building2, LogOut,
-  Share2, Lock,
+  Share2, Lock, ChevronRight,
 } from 'lucide-react';
 import { useTheme } from '../lib/ThemeContext';
 import OncLogo from './OncLogo';
@@ -198,7 +198,17 @@ const Sidebar = ({
   const [deletingWsId, setDeletingWsId]  = useState(null);
   const [shareTarget,  setShareTarget]   = useState(null); // { type: 'organization'|'workspace', resource }
 
-  const orgWorkspaces = workspaces.filter(w => w.organization_id === selectedOrg && w.id !== 'ws_inbox');
+  // ── Collapsible sections (persisted) ──────────────────────────────────────
+  const [orgsExpanded, setOrgsExpanded] = useState(() => localStorage.getItem('dv-orgs-collapsed') !== 'true');
+  const [wsExpanded,   setWsExpanded]   = useState(() => localStorage.getItem('dv-ws-collapsed') !== 'true');
+  useEffect(() => { localStorage.setItem('dv-orgs-collapsed', (!orgsExpanded).toString()); }, [orgsExpanded]);
+  useEffect(() => { localStorage.setItem('dv-ws-collapsed', (!wsExpanded).toString()); }, [wsExpanded]);
+
+  // Public items first, private ones below — until shared/made public, a
+  // private org/workspace stays out of the way at the bottom of the list.
+  const byVisibility = (a, b) => (a.visibility === 'private' ? 1 : 0) - (b.visibility === 'private' ? 1 : 0);
+  const sortedOrgs = [...organizations].sort(byVisibility);
+  const orgWorkspaces = workspaces.filter(w => w.organization_id === selectedOrg && w.id !== 'ws_inbox').sort(byVisibility);
   const canManage = (resourceOwnerId) => currentUser?.role === 'admin' || currentUser?.id === resourceOwnerId;
 
   const handleCreateOrg = async (name) => {
@@ -234,9 +244,16 @@ const Sidebar = ({
     setDeletingWsId(null);
   };
 
-  const SectionHeader = ({ label, onAdd }) => (
+  const SectionHeader = ({ label, count, onAdd, expanded, onToggle }) => (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', marginBottom: 6 }}>
-      <span className="section-label">{label}</span>
+      <button onClick={onToggle}
+        style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none',
+          cursor: 'pointer', padding: '2px 0', color: 'inherit' }}>
+        <ChevronRight size={12} style={{ color: 'var(--c-text2)', flexShrink: 0,
+          transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }} />
+        <span className="section-label">{label}</span>
+        {count > 0 && <span style={{ fontSize: 10, color: 'var(--c-text2)' }}>({count})</span>}
+      </button>
       <button onClick={onAdd} title={`New ${label.slice(0, -1).toLowerCase()}`}
         style={{ color: 'var(--c-text2)', cursor: 'pointer', lineHeight: 0, padding: 2 }}
         onMouseEnter={e => e.currentTarget.style.color = 'var(--c-text)'}
@@ -307,9 +324,12 @@ const Sidebar = ({
 
         {/* Organizations */}
         <section style={{ padding: '0 12px', marginBottom: 18 }}>
-          <SectionHeader label="Organizations" onAdd={() => setShowNewOrg(v => !v)} />
+          <SectionHeader label="Organizations" count={organizations.length}
+            expanded={orgsExpanded} onToggle={() => setOrgsExpanded(v => !v)}
+            onAdd={() => { setOrgsExpanded(true); setShowNewOrg(v => !v); }} />
+          {orgsExpanded && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {organizations.map(org => {
+            {sortedOrgs.map(org => {
               const isSelected = org.id === selectedOrg;
               const wsCount    = workspaces.filter(w => w.organization_id === org.id && w.id !== 'ws_inbox').length;
               if (deletingOrgId === org.id) {
@@ -399,6 +419,7 @@ const Sidebar = ({
               </div>
             )}
           </div>
+          )}
           {showNewOrg && (
             <InlineInput placeholder="Organization name…"
               onConfirm={handleCreateOrg}
@@ -409,7 +430,10 @@ const Sidebar = ({
         {/* Workspaces */}
         {selectedOrg && (
           <section style={{ padding: '0 12px', marginBottom: 18 }}>
-            <SectionHeader label="Workspaces" onAdd={() => setShowNewWs(v => !v)} />
+            <SectionHeader label="Workspaces" count={orgWorkspaces.length}
+              expanded={wsExpanded} onToggle={() => setWsExpanded(v => !v)}
+              onAdd={() => { setWsExpanded(true); setShowNewWs(v => !v); }} />
+            {wsExpanded && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {orgWorkspaces.length === 0 && !showNewWs && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -491,6 +515,7 @@ const Sidebar = ({
                 );
               })}
             </div>
+            )}
             {showNewWs && (
               <InlineInput placeholder="Workspace name…"
                 onConfirm={handleCreateWs}

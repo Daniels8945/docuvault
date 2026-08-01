@@ -61,6 +61,29 @@ const AppShell = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOrg]);
 
+  // Someone else sharing an org/workspace with you doesn't push a
+  // notification — refetch when the tab regains focus so newly-shared
+  // items show up without requiring a manual reload.
+  useEffect(() => {
+    const refresh = () => {
+      fetchOrganizations().then(orgs => {
+        setOrganizations(orgs);
+        if (selectedOrg && !orgs.some(o => o.id === selectedOrg)) {
+          setSelectedOrg(orgs[0]?.id ?? null);
+        }
+      });
+      if (selectedOrg) fetchWorkspaces(selectedOrg).then(setWorkspaces);
+    };
+    const onVisibility = () => { if (document.visibilityState === 'visible') refresh(); };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOrg]);
+
   // ── Org CRUD callbacks ──────────────────────────────────────────────────────
   const handleOrgCreated = useCallback((org) => {
     setOrganizations(prev => [...prev, org]);

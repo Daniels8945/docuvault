@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 from typing import List
 
 import storage
-from auth import get_current_user, require_admin
+from auth import get_current_user
 from database import get_session
 from permissions import (
     visible_organization_ids, organization_visible, can_manage_sharing,
@@ -34,9 +34,13 @@ def get_organizations(
 def create_organization(
     org: OrganizationCreate,
     session: Session = Depends(get_session),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ):
-    db_org = Organization(**org.dict(), owner_id=admin.id)
+    """Any signed-in user can create an organization — it belongs to them
+    and defaults to public, same as workspaces. Structural admin control
+    over ORG CONTENT (delete, force-manage sharing) still exists via
+    require_admin below; this just opens up who can start one."""
+    db_org = Organization(**org.dict(), owner_id=current_user.id)
     session.add(db_org)
     session.commit()
     session.refresh(db_org)
@@ -62,11 +66,15 @@ def update_organization(
     org_id: str,
     org_update: OrganizationUpdate,
     session: Session = Depends(get_session),
-    _admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ):
     org = session.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
+    if not organization_visible(org, session, current_user):
+        raise HTTPException(status_code=404, detail="Organization not found")
+    if not can_manage_sharing(org.owner_id, current_user):
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can edit this organization")
     for key, value in org_update.dict(exclude_unset=True).items():
         setattr(org, key, value)
     session.add(org)
@@ -161,11 +169,15 @@ def remove_organization_member(
 def delete_organization(
     org_id: str,
     session: Session = Depends(get_session),
-    _admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ):
     org = session.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
+    if not organization_visible(org, session, current_user):
+        raise HTTPException(status_code=404, detail="Organization not found")
+    if not can_manage_sharing(org.owner_id, current_user):
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can delete this organization")
 
     workspaces = session.exec(select(Workspace).where(Workspace.organization_id == org_id)).all()
 
