@@ -369,7 +369,7 @@ const Sidebar = ({
                     </span>
                   )}
                   {renamingOrgId !== org.id && (
-                    <div className="opacity-0 group-hover:opacity-100"
+                    <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100"
                       style={{ display: 'flex', gap: 2, flexShrink: 0, transition: 'opacity 0.1s' }}>
                       {canManage(org.owner_id) && (
                         <button title="Share"

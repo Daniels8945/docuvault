@@ -298,13 +298,24 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
 
   return (
     <Modal onClose={onClose} maxWidth="max-w-4xl">
-      <div className="flex" style={{ minHeight: 520, maxHeight: '82vh' }}>
+      <div className="flex flex-col md:flex-row md:min-h-[520px] md:max-h-[82vh]">
+
+        {/* ── Mobile-only top bar (name + close) — the panels below get
+             reordered so preview shows first on mobile, which would push
+             the desktop close button out of reach without this ──────── */}
+        <div className="flex md:hidden items-center justify-between px-4 py-3 flex-shrink-0"
+          style={{ borderBottom: '1px solid var(--c-border)' }}>
+          <p className="text-sm font-semibold truncate flex-1 mr-3" style={{ color: 'var(--c-text)' }}>{doc.name}</p>
+          <button onClick={onClose} className="p-1 rounded-lg flex-shrink-0" style={{ color: 'var(--c-text2)' }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
         {/* ── Left panel ─────────────────────── */}
-        <div className="w-60 flex flex-col flex-shrink-0 overflow-y-auto"
-          style={{ borderRight: '1px solid var(--c-border)' }}>
+        <div className="w-full md:w-60 flex flex-col flex-shrink-0 order-2 md:order-1 md:overflow-y-auto border-t md:border-t-0 md:border-r"
+          style={{ borderColor: 'var(--c-border)' }}>
           <div className="p-5 flex flex-col gap-4 flex-1">
-            <div className="flex items-start justify-between">
+            <div className="hidden md:flex items-start justify-between">
               <FileIcon type={doc.file_type} size="lg" />
               <button onClick={onClose}
                 className="p-1 rounded-lg transition-colors flex-shrink-0 mt-0.5"
@@ -330,7 +341,7 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
                 <p className="font-semibold text-sm leading-snug break-all flex-1" style={{ color: 'var(--c-text)' }}>{doc.name}</p>
                 {isAdmin && (
                   <button onClick={() => setEditName(true)}
-                    className="opacity-0 group-hover:opacity-100 transition mt-0.5 flex-shrink-0"
+                    className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition mt-0.5 flex-shrink-0"
                     style={{ color: 'var(--c-text2)' }}>
                     <Pencil className="w-3 h-3" />
                   </button>
@@ -472,7 +483,7 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
         </div>
 
         {/* ── Right panel ─────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="order-1 md:order-2 flex flex-col overflow-hidden h-[50vh] md:h-auto md:flex-1">
           {/* Tab bar */}
           <div className="flex items-center justify-between px-5 flex-shrink-0"
             style={{ borderBottom: '1px solid var(--c-border)' }}>

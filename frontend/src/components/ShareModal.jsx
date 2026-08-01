@@ -28,10 +28,10 @@ const ShareModal = ({ resourceType, resource, onClose, onUpdated }) => {
   const [visibility, setVisibility] = useState(resource.visibility || 'public');
   const [members, setMembers] = useState([]);
   const [directory, setDirectory] = useState([]);
-  const [selectedUserId, setSelectedUserId] = useState('');
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [togglingVisibility, setTogglingVisibility] = useState(false);
-  const [addingMember, setAddingMember] = useState(false);
+  const [addingMembers, setAddingMembers] = useState(false);
 
   useEffect(() => {
     Promise.all([api.fetchMembers(resource.id), fetchUserDirectory()])
@@ -59,19 +59,32 @@ const ShareModal = ({ resourceType, resource, onClose, onUpdated }) => {
     }
   };
 
-  const handleAddMember = async () => {
-    if (!selectedUserId) return;
-    setAddingMember(true);
+  const toggleCandidate = (userId) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId); else next.add(userId);
+      return next;
+    });
+  };
+
+  const handleAddMembers = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    setAddingMembers(true);
     try {
-      const member = await api.addMember(resource.id, selectedUserId);
-      setMembers(prev => [...prev, member]);
-      setSelectedUserId('');
-      toast.success(`Shared with ${member.user_name}`);
-    } catch (err) {
-      const detail = err?.response?.data?.detail;
-      toast.error(typeof detail === 'string' ? detail : 'Could not add member.');
+      const results = await Promise.allSettled(ids.map(id => api.addMember(resource.id, id)));
+      const added = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+      const failed = results.length - added.length;
+      if (added.length) {
+        setMembers(prev => [...prev, ...added]);
+        toast.success(added.length === 1
+          ? `Shared with ${added[0].user_name}`
+          : `Shared with ${added.length} people`);
+      }
+      if (failed) toast.error(`Could not add ${failed} ${failed === 1 ? 'person' : 'people'}.`);
+      setSelectedIds(new Set());
     } finally {
-      setAddingMember(false);
+      setAddingMembers(false);
     }
   };
 
@@ -140,17 +153,35 @@ const ShareModal = ({ resourceType, resource, onClose, onUpdated }) => {
               </div>
             )}
 
-            <div className="flex gap-2">
-              <select value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}
-                className="input-field flex-1 text-sm">
-                <option value="">Select a person…</option>
-                {candidates.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
-              </select>
-              <button onClick={handleAddMember} disabled={!selectedUserId || addingMember}
-                className="btn-primary text-xs px-3 disabled:opacity-40">
-                <UserPlus className="w-3.5 h-3.5" />
-              </button>
-            </div>
+            {candidates.length > 0 && (
+              <div className="space-y-2">
+                <div className="rounded-lg overflow-y-auto"
+                  style={{ border: '1px solid var(--c-border)', maxHeight: 168 }}>
+                  {candidates.map(u => (
+                    <label key={u.id}
+                      className="flex items-center gap-2.5 px-3 py-2 cursor-pointer"
+                      style={{ borderBottom: '1px solid var(--c-border)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--c-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                      <input type="checkbox" checked={selectedIds.has(u.id)}
+                        onChange={() => toggleCandidate(u.id)}
+                        style={{ accentColor: 'var(--c-accent)', flexShrink: 0 }} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium truncate" style={{ color: 'var(--c-text)' }}>{u.name}</p>
+                        <p className="text-xs truncate" style={{ color: 'var(--c-text2)' }}>{u.email}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <button onClick={handleAddMembers} disabled={selectedIds.size === 0 || addingMembers}
+                  className="btn-primary text-xs w-full py-2 disabled:opacity-40">
+                  <UserPlus className="w-3.5 h-3.5" />
+                  {addingMembers
+                    ? 'Adding…'
+                    : selectedIds.size > 0 ? `Add ${selectedIds.size} selected` : 'Select people to add'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

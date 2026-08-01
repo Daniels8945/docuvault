@@ -157,11 +157,11 @@ const Settings = ({ currentUser }) => {
 
       <div className="flex-1 overflow-y-auto px-8 py-6">
         {/* Tabs */}
-        <div className="flex gap-1 mb-6 p-1 rounded-xl w-fit"
+        <div className="flex gap-1 mb-6 p-1 rounded-xl w-full md:w-fit overflow-x-auto"
           style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => { setTab(id); resetForm(); }}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all flex-shrink-0"
               style={tab === id
                 ? { background: 'var(--c-accent-bg)', color: 'var(--c-accent-txt)', border: '1px solid var(--c-border2)' }
                 : { color: 'var(--c-text2)' }}>

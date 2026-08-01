@@ -68,7 +68,7 @@ const FolderCard = ({ folder, allFolders, canEdit, isAdmin, currentUser, onOpen,
 
       <button
         onClick={e => { e.stopPropagation(); setMenuOpen(v => !v); }}
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition p-0.5 rounded"
+        className="absolute top-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition p-0.5 rounded"
         style={{ color: 'var(--c-text2)', background: menuOpen ? 'var(--c-surface2)' : 'transparent' }}
         onMouseEnter={e => e.currentTarget.style.color = 'var(--c-text)'}
         onMouseLeave={e => e.currentTarget.style.color = 'var(--c-text2)'}
