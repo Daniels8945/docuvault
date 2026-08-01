@@ -9,7 +9,7 @@ import {
   fetchDocumentVersions, updateDocument, deleteDocument, uploadNewVersion,
   fetchPreviewBlob, fetchDocumentUrl, downloadDocumentFile, fetchWorkspaces, fetchFolders,
 } from '../services/api';
-import { useToast } from '../lib/ToastContext';
+import toast from 'react-hot-toast';
 
 // Rendered directly in-browser from an authenticated blob.
 const NATIVE_TYPES = [
@@ -66,7 +66,6 @@ const PreviewPane = ({ docId, fileType, name, onDownload }) => {
 const NativePreview = ({ docId, fileType, name }) => {
   const [blobUrl, setBlobUrl] = useState(null);
   const [error, setError]     = useState(false);
-  const { toast } = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -82,7 +81,7 @@ const NativePreview = ({ docId, fileType, name }) => {
       .catch(() => {
         if (cancelled) return;
         setError(true);
-        toast('Could not load preview.', 'error');
+        toast.error('Could not load preview.');
       });
     return () => {
       cancelled = true;
@@ -130,7 +129,6 @@ const NativePreview = ({ docId, fileType, name }) => {
 const OfficePreview = ({ docId, name, onDownload }) => {
   const [viewerUrl, setViewerUrl] = useState(null);
   const [error, setError]         = useState(false);
-  const { toast } = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -144,7 +142,7 @@ const OfficePreview = ({ docId, name, onDownload }) => {
       .catch(() => {
         if (cancelled) return;
         setError(true);
-        toast('Could not load preview.', 'error');
+        toast.error('Could not load preview.');
       });
     return () => { cancelled = true; };
   }, [docId]);
@@ -177,7 +175,6 @@ const TextPreview = ({ blobUrl }) => {
 };
 
 const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
-  const { toast } = useToast();
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('preview');
@@ -245,10 +242,10 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
     if (!file) return;
     try {
       await uploadNewVersion(doc.id, file);
-      toast(`New version of "${doc.name}" uploaded`, 'success');
+      toast.success(`New version of "${doc.name}" uploaded`);
       onUpdate();
     } catch {
-      toast('Version upload failed — please try again.', 'error');
+      toast.error('Version upload failed — please try again.');
     }
   };
 
@@ -257,7 +254,7 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
     try {
       await downloadDocumentFile(doc.id, doc.name);
     } catch {
-      toast('Download failed — please try again.', 'error');
+      toast.error('Download failed — please try again.');
     } finally {
       setDownloading(false);
     }
@@ -268,11 +265,11 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
     try {
       const next = isPrivate ? 'public' : 'private';
       await updateDocument(doc.id, { visibility: next });
-      toast(next === 'private' ? 'Document is now private' : 'Document is now visible to everyone', 'success');
+      toast.success(next === 'private' ? 'Document is now private' : 'Document is now visible to everyone');
       onUpdate();
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      toast(typeof detail === 'string' ? detail : 'Could not change visibility.', 'error');
+      toast.error(typeof detail === 'string' ? detail : 'Could not change visibility.');
     } finally {
       setTogglingVisibility(false);
     }
@@ -284,11 +281,11 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
     try {
       await updateDocument(doc.id, { workspace_id: moveWorkspaceId, folder_id: moveFolderId || null });
       const wsName = moveWorkspaces.find(w => w.id === moveWorkspaceId)?.name || moveWorkspaceId;
-      toast(`Moved "${doc.name}" to ${wsName}`, 'success');
+      toast.success(`Moved "${doc.name}" to ${wsName}`);
       setShowMove(false);
       onUpdate();
     } catch {
-      toast('Move failed — please try again.', 'error');
+      toast.error('Move failed — please try again.');
     } finally {
       setMoving(false);
     }

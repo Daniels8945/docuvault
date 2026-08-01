@@ -3,9 +3,11 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Clock, MessageCircle, Settings, CheckSquare,
   FolderOpen, Sun, Moon, Plus, Trash2, Check, X, Pencil, Building2, LogOut,
+  Share2, Lock,
 } from 'lucide-react';
 import { useTheme } from '../lib/ThemeContext';
 import OncLogo from './OncLogo';
+import ShareModal from './ShareModal';
 import {
   createOrganization, deleteOrganization, updateOrganization,
   createWorkspace, deleteWorkspace, updateWorkspace,
@@ -125,8 +127,8 @@ const Sidebar = ({
   currentUser, organizations, workspaces,
   selectedOrg, selectedWorkspace,
   onSelectOrg, onSelectWorkspace,
-  onOrgCreated, onOrgDeleted, onOrgRenamed,
-  onWorkspaceCreated, onWorkspaceDeleted, onWorkspaceRenamed,
+  onOrgCreated, onOrgDeleted, onOrgRenamed, onOrgUpdated,
+  onWorkspaceCreated, onWorkspaceDeleted, onWorkspaceRenamed, onWorkspaceUpdated,
   onLogout,
   // Mobile props
   isMobile = false,
@@ -194,8 +196,10 @@ const Sidebar = ({
   const [showNewWs,    setShowNewWs]      = useState(false);
   const [renamingWsId, setRenamingWsId]  = useState(null);
   const [deletingWsId, setDeletingWsId]  = useState(null);
+  const [shareTarget,  setShareTarget]   = useState(null); // { type: 'organization'|'workspace', resource }
 
   const orgWorkspaces = workspaces.filter(w => w.organization_id === selectedOrg && w.id !== 'ws_inbox');
+  const canManage = (resourceOwnerId) => currentUser?.role === 'admin' || currentUser?.id === resourceOwnerId;
 
   const handleCreateOrg = async (name) => {
     const org = await createOrganization({ name });
@@ -335,15 +339,27 @@ const Sidebar = ({
                       onConfirm={name => handleRenameOrg(org.id, name)}
                       onCancel={() => setRenamingOrgId(null)} />
                   ) : (
-                    <span style={{ flex: 1, fontSize: 12, fontWeight: 500,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4,
+                      fontSize: 12, fontWeight: 500,
                       color: isSelected ? 'var(--c-accent-txt)' : 'var(--c-text)' }}>
-                      {org.name}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{org.name}</span>
+                      {org.visibility === 'private' && (
+                        <Lock size={10} style={{ flexShrink: 0, color: 'var(--c-text2)' }} />
+                      )}
                     </span>
                   )}
                   {renamingOrgId !== org.id && (
                     <div className="opacity-0 group-hover:opacity-100"
                       style={{ display: 'flex', gap: 2, flexShrink: 0, transition: 'opacity 0.1s' }}>
+                      {canManage(org.owner_id) && (
+                        <button title="Share"
+                          onClick={e => { e.stopPropagation(); setShareTarget({ type: 'organization', resource: org }); }}
+                          style={{ padding: 3, borderRadius: 5, color: 'var(--c-text2)', cursor: 'pointer', lineHeight: 0 }}
+                          onMouseEnter={e => e.currentTarget.style.color = 'var(--c-accent-txt)'}
+                          onMouseLeave={e => e.currentTarget.style.color = 'var(--c-text2)'}>
+                          <Share2 size={11} />
+                        </button>
+                      )}
                       <button title="Rename"
                         onClick={e => { e.stopPropagation(); setRenamingOrgId(org.id); }}
                         style={{ padding: 3, borderRadius: 5, color: 'var(--c-text2)', cursor: 'pointer', lineHeight: 0 }}
@@ -434,15 +450,27 @@ const Sidebar = ({
                         onConfirm={name => handleRenameWs(ws.id, name)}
                         onCancel={() => setRenamingWsId(null)} />
                     ) : (
-                      <span style={{ flex: 1, fontSize: 12, fontWeight: 500,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4,
+                        fontSize: 12, fontWeight: 500,
                         color: isActive ? 'var(--c-accent-txt)' : 'var(--c-text)' }}>
-                        {ws.name}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ws.name}</span>
+                        {ws.visibility === 'private' && (
+                          <Lock size={10} style={{ flexShrink: 0, color: 'var(--c-text2)' }} />
+                        )}
                       </span>
                     )}
                     {renamingWsId !== ws.id && (
                       <div className="opacity-0 group-hover:opacity-100"
                         style={{ display: 'flex', gap: 2, flexShrink: 0, transition: 'opacity 0.1s' }}>
+                        {canManage(ws.owner_id) && (
+                          <button title="Share"
+                            onClick={e => { e.stopPropagation(); setShareTarget({ type: 'workspace', resource: ws }); }}
+                            style={{ padding: 3, borderRadius: 5, color: 'var(--c-text2)', cursor: 'pointer', lineHeight: 0 }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--c-accent-txt)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--c-text2)'}>
+                            <Share2 size={11} />
+                          </button>
+                        )}
                         <button title="Rename"
                           onClick={e => { e.stopPropagation(); setRenamingWsId(ws.id); }}
                           style={{ padding: 3, borderRadius: 5, color: 'var(--c-text2)', cursor: 'pointer', lineHeight: 0 }}
@@ -535,7 +563,19 @@ const Sidebar = ({
     </aside>
   );
 
-  if (!isMobile) return sidebarBody;
+  const shareModal = shareTarget && (
+    <ShareModal
+      resourceType={shareTarget.type}
+      resource={shareTarget.resource}
+      onClose={() => setShareTarget(null)}
+      onUpdated={(nextVisibility) => {
+        if (shareTarget.type === 'organization') onOrgUpdated?.(shareTarget.resource.id, nextVisibility);
+        else onWorkspaceUpdated?.(shareTarget.resource.id, nextVisibility);
+      }}
+    />
+  );
+
+  if (!isMobile) return <>{sidebarBody}{shareModal}</>;
 
   // Mobile: drawer + backdrop overlay
   return (
@@ -552,6 +592,7 @@ const Sidebar = ({
         }}
       />
       {sidebarBody}
+      {shareModal}
     </>
   );
 };

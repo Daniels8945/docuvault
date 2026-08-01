@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FolderOpen, MoreVertical, Info, Pencil, FolderInput, Trash2, X, Check } from 'lucide-react';
+import { FolderOpen, MoreVertical, Info, Pencil, FolderInput, Trash2, X, Check, StickyNote, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import Modal from './ui/Modal';
-import { updateFolder, deleteFolder } from '../services/api';
-import { useToast } from '../lib/ToastContext';
+import { updateFolder, deleteFolder, fetchFolderNotes, createFolderNote, deleteFolderNote } from '../services/api';
+import toast from 'react-hot-toast';
 
 // Every folder in the workspace's own descendants, walked via parent_folder_id —
 // used to stop a folder being moved into (or renamed to look like it's inside)
@@ -23,8 +23,7 @@ const collectDescendantIds = (folderId, allFolders) => {
   return ids;
 };
 
-const FolderCard = ({ folder, allFolders, canEdit, isAdmin, onOpen, onChanged }) => {
-  const { toast } = useToast();
+const FolderCard = ({ folder, allFolders, canEdit, isAdmin, currentUser, onOpen, onChanged }) => {
   const [menuOpen, setMenuOpen]     = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [showRename, setShowRename]   = useState(false);
@@ -47,11 +46,11 @@ const FolderCard = ({ folder, allFolders, canEdit, isAdmin, onOpen, onChanged })
   const handleDelete = async () => {
     try {
       await deleteFolder(folder.id);
-      toast(`Folder "${folder.name}" deleted`, 'success');
+      toast.success(`Folder "${folder.name}" deleted`);
       onChanged();
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      toast(typeof detail === 'string' ? detail : 'Failed to delete folder.', 'error');
+      toast.error(typeof detail === 'string' ? detail : 'Failed to delete folder.');
     }
   };
 
@@ -135,6 +134,7 @@ const FolderCard = ({ folder, allFolders, canEdit, isAdmin, onOpen, onChanged })
 
       {showDetails && (
         <FolderDetailsModal folder={folder} subfolderCount={subfolderCount} parentName={parentName}
+          currentUser={currentUser} isAdmin={isAdmin}
           onClose={() => setShowDetails(false)} />
       )}
       {showRename && (
@@ -148,29 +148,113 @@ const FolderCard = ({ folder, allFolders, canEdit, isAdmin, onOpen, onChanged })
   );
 };
 
-const FolderDetailsModal = ({ folder, subfolderCount, parentName, onClose }) => (
-  <Modal onClose={onClose} title="Folder Details" maxWidth="max-w-sm">
-    <div className="p-6 space-y-3 text-sm">
-      {[
-        ['Name', folder.name],
-        ['Location', parentName || 'Workspace root'],
-        ['Documents', folder.document_count ?? 0],
-        ['Subfolders', subfolderCount],
-        ['Created by', folder.created_by_name || 'Unknown'],
-        ['Created', format(new Date(folder.created_at), 'MMM d, yyyy · h:mm a')],
-      ].map(([label, value]) => (
-        <div key={label} className="flex items-center justify-between">
-          <span style={{ color: 'var(--c-text2)' }}>{label}</span>
-          <span style={{ color: 'var(--c-text)', fontWeight: 500 }}>{value}</span>
+const FolderDetailsModal = ({ folder, subfolderCount, parentName, currentUser, isAdmin, onClose }) => {
+  const [notes, setNotes]     = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [draft, setDraft]     = useState('');
+  const [posting, setPosting] = useState(false);
+
+  useEffect(() => {
+    fetchFolderNotes(folder.id).then(setNotes).finally(() => setLoading(false));
+  }, [folder.id]);
+
+  const handlePost = async () => {
+    if (!draft.trim()) return;
+    setPosting(true);
+    try {
+      const note = await createFolderNote(folder.id, draft.trim());
+      setNotes(prev => [...prev, note]);
+      setDraft('');
+    } catch {
+      toast.error('Could not post note — please try again.');
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const handleDeleteNote = async (noteId) => {
+    try {
+      await deleteFolderNote(folder.id, noteId);
+      setNotes(prev => prev.filter(n => n.id !== noteId));
+    } catch {
+      toast.error('Could not delete note.');
+    }
+  };
+
+  return (
+    <Modal onClose={onClose} title="Folder Details" maxWidth="max-w-md">
+      <div className="p-6 space-y-4 text-sm">
+        <div className="space-y-2.5">
+          {[
+            ['Name', folder.name],
+            ['Location', parentName || 'Workspace root'],
+            ['Documents', folder.document_count ?? 0],
+            ['Subfolders', subfolderCount],
+            ['Created by', folder.created_by_name || 'Unknown'],
+            ['Created', format(new Date(folder.created_at), 'MMM d, yyyy · h:mm a')],
+          ].map(([label, value]) => (
+            <div key={label} className="flex items-center justify-between">
+              <span style={{ color: 'var(--c-text2)' }}>{label}</span>
+              <span style={{ color: 'var(--c-text)', fontWeight: 500 }}>{value}</span>
+            </div>
+          ))}
         </div>
-      ))}
-      <button onClick={onClose} className="btn-secondary w-full text-sm mt-2">Close</button>
-    </div>
-  </Modal>
-);
+
+        <div className="pt-1" style={{ borderTop: '1px solid var(--c-border)' }}>
+          <div className="flex items-center gap-1.5 py-3">
+            <StickyNote className="w-3.5 h-3.5" style={{ color: 'var(--c-text2)' }} />
+            <span className="section-label">Notes & Instructions</span>
+          </div>
+
+          <div className="space-y-2 mb-3" style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {loading ? (
+              <p className="text-xs" style={{ color: 'var(--c-text2)' }}>Loading…</p>
+            ) : notes.length === 0 ? (
+              <p className="text-xs" style={{ color: 'var(--c-text2)' }}>
+                No notes yet — leave instructions for whoever uses this folder next.
+              </p>
+            ) : notes.map(n => (
+              <div key={n.id} className="p-2.5 rounded-lg"
+                style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)' }}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs whitespace-pre-wrap break-words flex-1" style={{ color: 'var(--c-text)' }}>
+                    {n.content}
+                  </p>
+                  {(n.author_id === currentUser?.id || isAdmin) && (
+                    <button onClick={() => handleDeleteNote(n.id)} className="flex-shrink-0"
+                      style={{ color: 'var(--c-text2)' }}
+                      onMouseEnter={e => e.currentTarget.style.color = 'var(--c-danger)'}
+                      onMouseLeave={e => e.currentTarget.style.color = 'var(--c-text2)'}>
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs mt-1.5" style={{ color: 'var(--c-text2)' }}>
+                  {n.author_name} · {format(new Date(n.created_at), 'MMM d, h:mm a')}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            <input value={draft} onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handlePost()}
+              placeholder="Leave a note or instruction…"
+              className="input-field flex-1 text-xs py-1.5" />
+            <button onClick={handlePost} disabled={!draft.trim() || posting}
+              className="btn-primary text-xs px-3 disabled:opacity-40">
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <button onClick={onClose} className="btn-secondary w-full text-sm mt-1">Close</button>
+      </div>
+    </Modal>
+  );
+};
 
 const RenameFolderModal = ({ folder, onClose, onRenamed }) => {
-  const { toast } = useToast();
   const [name, setName] = useState(folder.name);
   const [saving, setSaving] = useState(false);
 
@@ -180,11 +264,11 @@ const RenameFolderModal = ({ folder, onClose, onRenamed }) => {
     setSaving(true);
     try {
       await updateFolder(folder.id, { name: name.trim() });
-      toast(`Renamed to "${name.trim()}"`, 'success');
+      toast.success(`Renamed to "${name.trim()}"`);
       onRenamed();
       onClose();
     } catch {
-      toast('Rename failed — please try again.', 'error');
+      toast.error('Rename failed — please try again.');
     } finally {
       setSaving(false);
     }
@@ -207,7 +291,6 @@ const RenameFolderModal = ({ folder, onClose, onRenamed }) => {
 };
 
 const MoveFolderModal = ({ folder, allFolders, onClose, onMoved }) => {
-  const { toast } = useToast();
   const [target, setTarget] = useState(folder.parent_folder_id || '');
   const [saving, setSaving] = useState(false);
 
@@ -223,12 +306,12 @@ const MoveFolderModal = ({ folder, allFolders, onClose, onMoved }) => {
     try {
       await updateFolder(folder.id, { parent_folder_id: newParent });
       const destName = candidates.find(f => f.id === newParent)?.name || 'workspace root';
-      toast(`Moved "${folder.name}" to ${destName}`, 'success');
+      toast.success(`Moved "${folder.name}" to ${destName}`);
       onMoved();
       onClose();
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      toast(typeof detail === 'string' ? detail : 'Move failed — please try again.', 'error');
+      toast.error(typeof detail === 'string' ? detail : 'Move failed — please try again.');
     } finally {
       setSaving(false);
     }

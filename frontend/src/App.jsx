@@ -85,6 +85,10 @@ const AppShell = () => {
     setOrganizations(prev => prev.map(o => o.id === orgId ? { ...o, name } : o));
   }, []);
 
+  const handleOrgUpdated = useCallback((orgId, visibility) => {
+    setOrganizations(prev => prev.map(o => o.id === orgId ? { ...o, visibility } : o));
+  }, []);
+
   // ── Workspace CRUD callbacks ────────────────────────────────────────────────
   const handleWorkspaceCreated = useCallback((ws) => {
     setWorkspaces(prev => [...prev, ws]);
@@ -104,6 +108,10 @@ const AppShell = () => {
 
   const handleWorkspaceRenamed = useCallback((wsId, name) => {
     setWorkspaces(prev => prev.map(w => w.id === wsId ? { ...w, name } : w));
+  }, []);
+
+  const handleWorkspaceUpdated = useCallback((wsId, visibility) => {
+    setWorkspaces(prev => prev.map(w => w.id === wsId ? { ...w, visibility } : w));
   }, []);
 
   if (loading) {
@@ -167,9 +175,11 @@ const AppShell = () => {
         onOrgCreated={handleOrgCreated}
         onOrgDeleted={handleOrgDeleted}
         onOrgRenamed={handleOrgRenamed}
+        onOrgUpdated={handleOrgUpdated}
         onWorkspaceCreated={handleWorkspaceCreated}
         onWorkspaceDeleted={handleWorkspaceDeleted}
         onWorkspaceRenamed={handleWorkspaceRenamed}
+        onWorkspaceUpdated={handleWorkspaceUpdated}
         onLogout={logout}
         isMobile={isMobile}
         isOpen={sidebarOpen}

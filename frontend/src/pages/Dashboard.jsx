@@ -209,7 +209,7 @@ const Dashboard = ({ selectedWorkspace, currentUser }) => {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
               {childFolders.map(folder => (
                 <FolderCard key={folder.id} folder={folder} allFolders={folders}
-                  canEdit={canEdit} isAdmin={isAdmin}
+                  canEdit={canEdit} isAdmin={isAdmin} currentUser={currentUser}
                   onOpen={setSelectedFolder} onChanged={load} />
               ))}
             </div>

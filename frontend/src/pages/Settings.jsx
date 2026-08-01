@@ -9,7 +9,7 @@ import {
 } from '../services/api';
 import Spinner from '../components/ui/Spinner';
 import { formatFileSize } from '../lib/fileUtils';
-import { useToast } from '../lib/ToastContext';
+import toast from 'react-hot-toast';
 
 const ROLE_LABELS = { admin: 'Admin', editor: 'Editor', viewer: 'Viewer' };
 const ROLE_COLORS = {
@@ -19,7 +19,6 @@ const ROLE_COLORS = {
 };
 
 const Settings = ({ currentUser }) => {
-  const { toast } = useToast();
   const isAdmin = currentUser?.role === 'admin';
 
   const TABS = [
@@ -77,12 +76,12 @@ const Settings = ({ currentUser }) => {
       if (tab === 'orgs')       await createOrganization({ name: formData.name, description: formData.description });
       if (tab === 'workspaces') await createWorkspace({ name: formData.name, organization_id: formData.org_id, description: formData.description });
       if (tab === 'users')      await createUser({ name: formData.name, email: formData.email, password: formData.password, role: formData.role || 'viewer' });
-      toast(`${tab === 'orgs' ? 'Organization' : tab === 'workspaces' ? 'Workspace' : 'User'} "${formData.name}" created`, 'success');
+      toast.success(`${tab === 'orgs' ? 'Organization' : tab === 'workspaces' ? 'Workspace' : 'User'} "${formData.name}" created`);
       resetForm();
       load();
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      toast(typeof detail === 'string' ? detail : 'Save failed — please try again.', 'error');
+      toast.error(typeof detail === 'string' ? detail : 'Save failed — please try again.');
     } finally { setSaving(false); }
   };
 
@@ -94,7 +93,7 @@ const Settings = ({ currentUser }) => {
       if (type === 'user')      await deleteUser(id);
       load();
     } catch {
-      toast('Delete failed — please try again.', 'error');
+      toast.error('Delete failed — please try again.');
     }
   };
 
@@ -110,12 +109,12 @@ const Settings = ({ currentUser }) => {
     setSavingEdit(true);
     try {
       await updateUser(u.id, editForm);
-      toast(`Profile updated for ${editForm.name.trim()}`, 'success');
+      toast.success(`Profile updated for ${editForm.name.trim()}`);
       cancelEdit();
       load();
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      toast(typeof detail === 'string' ? detail : 'Update failed — please try again.', 'error');
+      toast.error(typeof detail === 'string' ? detail : 'Update failed — please try again.');
     } finally { setSavingEdit(false); }
   };
 
@@ -132,11 +131,11 @@ const Settings = ({ currentUser }) => {
     setSavingReset(true);
     try {
       await resetUserPassword(u.id, resetPw);
-      toast(`Password reset for ${u.name}`, 'success');
+      toast.success(`Password reset for ${u.name}`);
       cancelReset();
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      toast(typeof detail === 'string' ? detail : 'Password reset failed — please try again.', 'error');
+      toast.error(typeof detail === 'string' ? detail : 'Password reset failed — please try again.');
     } finally { setSavingReset(false); }
   };
 

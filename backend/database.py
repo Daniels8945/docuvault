@@ -72,6 +72,34 @@ def init_db():
                 conn.commit()
                 log.info("Migration: added folder.created_by column")
 
+            existing_org_cols = {
+                row[0] for row in conn.execute(
+                    text("SELECT column_name FROM information_schema.columns WHERE table_name='organization'")
+                )
+            }
+            if "owner_id" not in existing_org_cols:
+                conn.execute(text('ALTER TABLE "organization" ADD COLUMN owner_id VARCHAR'))
+                conn.commit()
+                log.info("Migration: added organization.owner_id column")
+            if "visibility" not in existing_org_cols:
+                conn.execute(text("ALTER TABLE \"organization\" ADD COLUMN visibility VARCHAR NOT NULL DEFAULT 'public'"))
+                conn.commit()
+                log.info("Migration: added organization.visibility column")
+
+            existing_ws_cols = {
+                row[0] for row in conn.execute(
+                    text("SELECT column_name FROM information_schema.columns WHERE table_name='workspace'")
+                )
+            }
+            if "owner_id" not in existing_ws_cols:
+                conn.execute(text('ALTER TABLE "workspace" ADD COLUMN owner_id VARCHAR'))
+                conn.commit()
+                log.info("Migration: added workspace.owner_id column")
+            if "visibility" not in existing_ws_cols:
+                conn.execute(text("ALTER TABLE \"workspace\" ADD COLUMN visibility VARCHAR NOT NULL DEFAULT 'public'"))
+                conn.commit()
+                log.info("Migration: added workspace.visibility column")
+
     with Session(engine) as session:
         from models import Organization, Workspace, Folder
 

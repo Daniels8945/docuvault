@@ -3,10 +3,9 @@ import { Upload, File, X, CheckCircle, Lock } from 'lucide-react';
 import Modal from './ui/Modal';
 import { uploadDocument } from '../services/api';
 import { formatFileSize } from '../lib/fileUtils';
-import { useToast } from '../lib/ToastContext';
+import toast from 'react-hot-toast';
 
 const UploadModal = ({ workspaceId, folderId, onClose, onComplete }) => {
-  const { toast } = useToast();
   const [files, setFiles]         = useState([]);
   const [tags, setTags]           = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
@@ -30,12 +29,12 @@ const UploadModal = ({ workspaceId, folderId, onClose, onComplete }) => {
       }
       setDone(true);
       const label = files.length === 1 ? `"${files[0].name}"` : `${files.length} files`;
-      toast(`${label} uploaded successfully`, 'success');
+      toast.success(`${label} uploaded successfully`);
       setTimeout(() => onComplete(), 1400);
     } catch (err) {
       const detail = err?.response?.data?.detail;
       const msg = typeof detail === 'string' ? detail : 'Upload failed — please try again.';
-      toast(msg, 'error');
+      toast.error(msg);
     } finally {
       setUploading(false);
     }

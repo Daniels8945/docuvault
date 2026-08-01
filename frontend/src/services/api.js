@@ -45,6 +45,12 @@ export const createOrganization  = (data)     => api.post('/organizations', data
 export const updateOrganization  = (id, data) => api.patch(`/organizations/${id}`, data).then(r => r.data);
 export const deleteOrganization  = (id)       => api.delete(`/organizations/${id}`).then(r => r.data);
 
+export const fetchOrganizationMembers = (id) => api.get(`/organizations/${id}/members`).then(r => r.data);
+export const addOrganizationMember    = (id, userId) =>
+  api.post(`/organizations/${id}/members`, null, { params: { user_id: userId } }).then(r => r.data);
+export const removeOrganizationMember = (id, userId) =>
+  api.delete(`/organizations/${id}/members/${userId}`).then(r => r.data);
+
 // ── Workspaces ─────────────────────────────────────────────────────────────────
 export const fetchWorkspaces  = (orgId = null) =>
   api.get('/workspaces', { params: orgId ? { org_id: orgId } : {} }).then(r => r.data);
@@ -54,12 +60,24 @@ export const createWorkspace  = (data)     => api.post('/workspaces', data).then
 export const updateWorkspace  = (id, data) => api.patch(`/workspaces/${id}`, data).then(r => r.data);
 export const deleteWorkspace  = (id)       => api.delete(`/workspaces/${id}`).then(r => r.data);
 
+export const fetchWorkspaceMembers = (id) => api.get(`/workspaces/${id}/members`).then(r => r.data);
+export const addWorkspaceMember    = (id, userId) =>
+  api.post(`/workspaces/${id}/members`, null, { params: { user_id: userId } }).then(r => r.data);
+export const removeWorkspaceMember = (id, userId) =>
+  api.delete(`/workspaces/${id}/members/${userId}`).then(r => r.data);
+
 // ── Folders ────────────────────────────────────────────────────────────────────
 export const fetchFolders = (workspaceId = null) =>
   api.get('/folders', { params: workspaceId ? { workspace_id: workspaceId } : {} }).then(r => r.data);
 export const createFolder = (data) => api.post('/folders', data).then(r => r.data);
 export const updateFolder = (id, data) => api.patch(`/folders/${id}`, data).then(r => r.data);
 export const deleteFolder = (id)   => api.delete(`/folders/${id}`).then(r => r.data);
+
+export const fetchFolderNotes = (folderId) => api.get(`/folders/${folderId}/notes`).then(r => r.data);
+export const createFolderNote = (folderId, content) =>
+  api.post(`/folders/${folderId}/notes`, { content }).then(r => r.data);
+export const deleteFolderNote = (folderId, noteId) =>
+  api.delete(`/folders/${folderId}/notes/${noteId}`).then(r => r.data);
 
 // ── Documents ──────────────────────────────────────────────────────────────────
 export const fetchDocuments = (filters = {}) =>
@@ -120,6 +138,7 @@ export const resetUserPassword = (id, newPassword) =>
   api.post(`/users/${id}/reset-password`, { new_password: newPassword }).then(r => r.data);
 export const deleteUser       = (id)   => api.delete(`/users/${id}`).then(r => r.data);
 export const fetchLeaderboard = ()     => api.get('/users/leaderboard').then(r => r.data);
+export const fetchUserDirectory = ()   => api.get('/users/directory').then(r => r.data);
 
 // ── WhatsApp Rules ─────────────────────────────────────────────────────────────
 export const fetchWhatsAppRules  = ()       => api.get('/whatsapp/rules').then(r => r.data);

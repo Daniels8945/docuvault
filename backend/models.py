@@ -12,20 +12,39 @@ class OrganizationBase(SQLModel):
 
 class Organization(OrganizationBase, table=True):
     id: str = Field(default_factory=lambda: f"org_{uuid.uuid4().hex[:8]}", primary_key=True)
+    owner_id: Optional[str] = Field(default=None, foreign_key="user.id")
+    visibility: str = Field(default="public")  # public, private — private visible only to owner + members (admins always see all)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     # Relationships
     workspaces: List["Workspace"] = Relationship(back_populates="organization")
 
 class OrganizationCreate(OrganizationBase):
-    pass
+    visibility: str = "public"
 
 class OrganizationUpdate(SQLModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    visibility: Optional[str] = None
 
 class OrganizationRead(OrganizationBase):
     id: str
+    owner_id: Optional[str] = None
+    visibility: str = "public"
+    created_at: datetime
+
+class OrganizationMember(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: f"orgm_{uuid.uuid4().hex[:8]}", primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id")
+    user_id: str = Field(foreign_key="user.id")
+    added_by: Optional[str] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class OrganizationMemberRead(SQLModel):
+    id: str
+    user_id: str
+    user_name: str
+    user_email: str
     created_at: datetime
 
 # ==================== WORKSPACES ====================
@@ -37,22 +56,41 @@ class WorkspaceBase(SQLModel):
 
 class Workspace(WorkspaceBase, table=True):
     id: str = Field(default_factory=lambda: f"ws_{uuid.uuid4().hex[:8]}", primary_key=True)
+    owner_id: Optional[str] = Field(default=None, foreign_key="user.id")
+    visibility: str = Field(default="public")  # public, private — private visible only to owner + members (admins always see all)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     # Relationships
     organization: Organization = Relationship(back_populates="workspaces")
     folders: List["Folder"] = Relationship(back_populates="workspace")
     documents: List["Document"] = Relationship(back_populates="workspace")
 
 class WorkspaceCreate(WorkspaceBase):
-    pass
+    visibility: str = "public"
 
 class WorkspaceUpdate(SQLModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    visibility: Optional[str] = None
 
 class WorkspaceRead(WorkspaceBase):
     id: str
+    owner_id: Optional[str] = None
+    visibility: str = "public"
+    created_at: datetime
+
+class WorkspaceMember(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: f"wsm_{uuid.uuid4().hex[:8]}", primary_key=True)
+    workspace_id: str = Field(foreign_key="workspace.id")
+    user_id: str = Field(foreign_key="user.id")
+    added_by: Optional[str] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class WorkspaceMemberRead(SQLModel):
+    id: str
+    user_id: str
+    user_name: str
+    user_email: str
     created_at: datetime
 
 # ==================== FOLDERS ====================
@@ -84,6 +122,25 @@ class FolderRead(FolderBase):
     created_by_name: Optional[str] = None
     created_at: datetime
     document_count: int = 0
+
+class FolderNote(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: f"note_{uuid.uuid4().hex[:8]}", primary_key=True)
+    folder_id: str = Field(foreign_key="folder.id")
+    author_id: Optional[str] = Field(default=None, foreign_key="user.id")
+    author_name: str
+    content: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class FolderNoteCreate(SQLModel):
+    content: str
+
+class FolderNoteRead(SQLModel):
+    id: str
+    folder_id: str
+    author_id: Optional[str] = None
+    author_name: str
+    content: str
+    created_at: datetime
 
 # ==================== DOCUMENTS ====================
 

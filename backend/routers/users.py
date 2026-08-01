@@ -116,6 +116,18 @@ def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+@router.get("/users/directory", summary="Minimal user list for sharing pickers (any authenticated user)")
+def get_user_directory(
+    session: Session = Depends(get_session),
+    _user: User = Depends(get_current_user),
+):
+    """Just enough to pick a colleague to share with — no role, no created_at."""
+    return [
+        {"id": u.id, "name": u.name, "email": u.email}
+        for u in session.exec(select(User)).all()
+    ]
+
+
 # ── Admin: manage users ────────────────────────────────────────────────────────
 
 @router.get("/users", response_model=List[UserRead], summary="List all users (admin only)")
