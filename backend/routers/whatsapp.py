@@ -48,7 +48,11 @@ ALLOWED_MIMETYPES = set(_MIME_TO_EXT.keys())
 
 _redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
 _WH_WINDOW = 60
-_WH_LIMIT  = 120
+# All real traffic here comes from one source (the waha container calling over
+# the docker network), and every "message" event counts against this budget
+# even when it has no media — a moderately busy group chat can burn through
+# 120/min on plain text alone. Generous enough that only genuine abuse trips it.
+_WH_LIMIT  = 600
 _DEDUP_TTL = 3600
 
 try:
@@ -67,10 +71,14 @@ except Exception as exc:
 def _is_rate_limited(ip: str) -> bool:
     if _use_redis:
         key = f"ratelimit:{ip}"
-        pipe = _redis.pipeline()
-        pipe.incr(key)
-        pipe.expire(key, _WH_WINDOW)
-        count = pipe.execute()[0]
+        # Only arm the TTL on the first hit of a window — re-running EXPIRE on
+        # every call (as this used to) keeps pushing the window forward as long
+        # as requests keep arriving, so a retry storm (WAHA retries a failed
+        # webhook up to 15x) never lets the window close and the limit never
+        # resets, permanently 429ing every message including its retries.
+        count = _redis.incr(key)
+        if count == 1:
+            _redis.expire(key, _WH_WINDOW)
         return count > _WH_LIMIT
     # In-memory fallback
     now = time.monotonic()

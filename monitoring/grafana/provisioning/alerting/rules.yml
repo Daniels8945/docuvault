@@ -11,7 +11,7 @@ contactPoints:
       - uid: email-receiver
         type: email
         settings:
-          addresses: ${GF_SMTP_FROM_ADDRESS}
+          addresses: $__env{GF_SMTP_FROM_ADDRESS}
           singleEmail: false
         disableResolveMessage: false
 
@@ -50,6 +50,9 @@ groups:
         data:
           - refId: A
             datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
               expr: docuvault_waha_session_connected
               intervalMs: 1000
@@ -58,6 +61,7 @@ groups:
             datasourceUid: __expr__
             model:
               type: threshold
+              expression: A
               conditions:
                 - evaluator:
                     params: [1]
@@ -84,6 +88,9 @@ groups:
         data:
           - refId: A
             datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
               expr: increase(docuvault_upload_failures_total[5m])
               intervalMs: 1000
@@ -92,6 +99,7 @@ groups:
             datasourceUid: __expr__
             model:
               type: threshold
+              expression: A
               conditions:
                 - evaluator:
                     params: [0]
@@ -118,6 +126,9 @@ groups:
         data:
           - refId: A
             datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
               expr: >
                 100 * sum(rate(http_requests_total{status=~"5.."}[5m]))
@@ -128,6 +139,7 @@ groups:
             datasourceUid: __expr__
             model:
               type: threshold
+              expression: A
               conditions:
                 - evaluator:
                     params: [10]
