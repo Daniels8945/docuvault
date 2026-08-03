@@ -226,6 +226,10 @@ def delete_workspace(
     ).all():
         session.delete(member)
     delete_workspace_contents(workspace_id, session)
+    # No ORM Relationship() ties WorkspaceMember back to Workspace, so flush
+    # explicitly to guarantee the member/content deletes land before the
+    # workspace row itself is deleted (see same fix in organizations.py).
+    session.flush()
     session.delete(workspace)
     session.commit()
     return {"message": "Workspace deleted"}

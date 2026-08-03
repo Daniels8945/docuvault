@@ -92,8 +92,9 @@ const Settings = ({ currentUser }) => {
       if (type === 'rule')      await deleteWhatsAppRule(id);
       if (type === 'user')      await deleteUser(id);
       load();
-    } catch {
-      toast.error('Delete failed — please try again.');
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Delete failed — please try again or contact IT support.');
     }
   };
 

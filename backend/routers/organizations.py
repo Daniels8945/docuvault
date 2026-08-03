@@ -186,12 +186,21 @@ def delete_organization(
         ).all():
             session.delete(member)
         delete_workspace_contents(ws.id, session)
+    # OrganizationMember/WorkspaceMember have no ORM Relationship() back to
+    # Organization/Workspace, so SQLAlchemy's flush has no dependency info to
+    # order these deletes automatically — flush each tier explicitly so the
+    # child rows are gone in the DB before we delete their parent.
+    session.flush()
+
+    for ws in workspaces:
         session.delete(ws)
+    session.flush()
 
     for member in session.exec(
         select(OrganizationMember).where(OrganizationMember.organization_id == org_id)
     ).all():
         session.delete(member)
+    session.flush()
 
     session.delete(org)
     session.commit()

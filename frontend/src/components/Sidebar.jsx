@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import {
   LayoutDashboard, Clock, MessageCircle, Settings, CheckSquare,
   FolderOpen, Sun, Moon, Plus, Trash2, Check, X, Pencil, Building2, LogOut,
@@ -230,9 +231,15 @@ const Sidebar = ({
     setRenamingOrgId(null);
   };
   const handleDeleteOrg = async (orgId) => {
-    await deleteOrganization(orgId);
-    onOrgDeleted(orgId);
-    setDeletingOrgId(null);
+    try {
+      await deleteOrganization(orgId);
+      onOrgDeleted(orgId);
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Could not delete organization — please try again or contact IT support.');
+    } finally {
+      setDeletingOrgId(null);
+    }
   };
   const handleCreateWs = async (name) => {
     const ws = await createWorkspace({ name, organization_id: selectedOrg });
@@ -246,9 +253,15 @@ const Sidebar = ({
     setRenamingWsId(null);
   };
   const handleDeleteWs = async (wsId) => {
-    await deleteWorkspace(wsId);
-    onWorkspaceDeleted(wsId);
-    setDeletingWsId(null);
+    try {
+      await deleteWorkspace(wsId);
+      onWorkspaceDeleted(wsId);
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Could not delete workspace — please try again or contact IT support.');
+    } finally {
+      setDeletingWsId(null);
+    }
   };
 
   const SectionHeader = ({ label, count, onAdd, expanded, onToggle }) => (
