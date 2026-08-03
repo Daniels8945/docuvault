@@ -2,17 +2,16 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select
 from typing import List
 
-import storage
 from auth import get_current_user
 from database import get_session
 from permissions import (
     visible_organization_ids, organization_visible, can_manage_sharing,
 )
+from deletion import delete_workspace_contents
 from models import (
     Organization, OrganizationCreate, OrganizationRead, OrganizationUpdate,
     OrganizationMember, OrganizationMemberRead,
-    Workspace, Folder, Document, DocumentVersion, Approval, WhatsAppGroupRule,
-    WorkspaceMember, User,
+    Workspace, WorkspaceMember, User,
 )
 
 router = APIRouter(prefix="/api/organizations", tags=["Organizations"])
@@ -182,38 +181,11 @@ def delete_organization(
     workspaces = session.exec(select(Workspace).where(Workspace.organization_id == org_id)).all()
 
     for ws in workspaces:
-        for rule in session.exec(
-            select(WhatsAppGroupRule).where(WhatsAppGroupRule.workspace_id == ws.id)
-        ).all():
-            session.delete(rule)
-
         for member in session.exec(
             select(WorkspaceMember).where(WorkspaceMember.workspace_id == ws.id)
         ).all():
             session.delete(member)
-
-        for doc in session.exec(
-            select(Document).where(Document.workspace_id == ws.id)
-        ).all():
-            for v in session.exec(
-                select(DocumentVersion).where(DocumentVersion.document_id == doc.id)
-            ).all():
-                session.delete(v)
-            for a in session.exec(
-                select(Approval).where(Approval.document_id == doc.id)
-            ).all():
-                session.delete(a)
-            try:
-                storage.delete_file(doc.file_path)
-            except Exception:
-                pass
-            session.delete(doc)
-
-        for folder in session.exec(
-            select(Folder).where(Folder.workspace_id == ws.id)
-        ).all():
-            session.delete(folder)
-
+        delete_workspace_contents(ws.id, session)
         session.delete(ws)
 
     for member in session.exec(

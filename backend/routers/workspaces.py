@@ -7,6 +7,7 @@ from typing import List, Optional
 from auth import get_current_user
 from database import get_session
 from permissions import visible_workspace_ids, workspace_visible, organization_visible, can_manage_sharing
+from deletion import delete_workspace_contents
 from models import (
     Workspace, WorkspaceCreate, WorkspaceRead, WorkspaceUpdate,
     WorkspaceMember, WorkspaceMemberRead,
@@ -224,6 +225,7 @@ def delete_workspace(
         select(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id)
     ).all():
         session.delete(member)
+    delete_workspace_contents(workspace_id, session)
     session.delete(workspace)
     session.commit()
     return {"message": "Workspace deleted"}
