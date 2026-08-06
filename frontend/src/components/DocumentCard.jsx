@@ -19,8 +19,8 @@ const DocumentCard = ({ document: doc, onClick }) => {
             </span>
           </div>
         </div>
-        <h3 className="font-semibold text-sm leading-snug mb-1 line-clamp-2"
-          style={{ color: 'var(--c-text)' }} title={doc.name}>
+        <h3 className="font-semibold text-sm leading-snug mb-1 line-clamp-2 break-words"
+          style={{ color: 'var(--c-text)', overflowWrap: 'anywhere' }} title={doc.name}>
           {doc.name}
         </h3>
         <p className="text-xs mb-3" style={{ color: 'var(--c-text2)' }}>

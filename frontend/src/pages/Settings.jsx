@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings as SettingsIcon, Plus, Trash2, Pencil, Key, Trophy, Building2, FolderOpen, MessageCircle, Users, X, Eye, EyeOff } from 'lucide-react';
+import { Settings as SettingsIcon, Plus, Trash2, Pencil, Key, Trophy, Building2, FolderOpen, MessageCircle, Users, X, Eye, EyeOff, Palette, Sun, Moon } from 'lucide-react';
 import {
   fetchOrganizations, createOrganization,
   fetchWorkspaces, createWorkspace, deleteWorkspace,
@@ -9,6 +9,7 @@ import {
 } from '../services/api';
 import Spinner from '../components/ui/Spinner';
 import { formatFileSize } from '../lib/fileUtils';
+import { useTheme } from '../lib/ThemeContext';
 import toast from 'react-hot-toast';
 
 const ROLE_LABELS = { admin: 'Admin', editor: 'Editor', viewer: 'Viewer' };
@@ -20,18 +21,20 @@ const ROLE_COLORS = {
 
 const Settings = ({ currentUser }) => {
   const isAdmin = currentUser?.role === 'admin';
+  const { isDark, toggle } = useTheme();
 
   const TABS = [
-    { id: 'orgs',       label: 'Organizations', icon: Building2     },
-    { id: 'workspaces', label: 'Workspaces',    icon: FolderOpen    },
-    { id: 'whatsapp',   label: 'Routing Rules', icon: MessageCircle },
+    { id: 'preferences', label: 'Preferences',   icon: Palette       },
+    { id: 'orgs',        label: 'Organizations', icon: Building2     },
+    { id: 'workspaces',  label: 'Workspaces',    icon: FolderOpen    },
+    { id: 'whatsapp',    label: 'Routing Rules', icon: MessageCircle },
     ...(isAdmin ? [
       { id: 'users',       label: 'Users',       icon: Users  },
       { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
     ] : []),
   ];
 
-  const [tab, setTab]           = useState('orgs');
+  const [tab, setTab]           = useState('preferences');
   const [orgs, setOrgs]         = useState([]);
   const [workspaces, setWorkspaces] = useState([]);
   const [rules, setRules]       = useState([]);
@@ -176,7 +179,7 @@ const Settings = ({ currentUser }) => {
           <div className={`${tab === 'leaderboard' ? 'max-w-3xl' : 'max-w-xl'} space-y-4 fade-in-up`}>
 
             {/* Add button */}
-            {tab !== 'whatsapp' && tab !== 'leaderboard' && !showForm && (
+            {tab !== 'whatsapp' && tab !== 'leaderboard' && tab !== 'preferences' && !showForm && (
               <button onClick={() => { setShowForm(true); setFormData({ role: 'viewer' }); }} className="btn-secondary text-xs">
                 <Plus className="w-3.5 h-3.5" />
                 {tab === 'orgs' ? 'Add Organization' : tab === 'workspaces' ? 'Add Workspace' : 'Add User'}
@@ -266,6 +269,30 @@ const Settings = ({ currentUser }) => {
                     {saving ? 'Saving…' : 'Save'}
                   </button>
                   <button onClick={resetForm} className="btn-secondary text-xs">Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {/* Preferences */}
+            {tab === 'preferences' && (
+              <div className="rounded-xl p-5" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
+                <p className="text-sm font-semibold mb-1" style={{ color: 'var(--c-text)' }}>Appearance</p>
+                <p className="text-xs mb-4" style={{ color: 'var(--c-text2)' }}>Choose how DocuVault looks on this device.</p>
+                <div className="flex gap-2">
+                  <button onClick={() => !isDark && toggle()}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium transition-all"
+                    style={isDark
+                      ? { background: 'var(--c-accent-bg)', color: 'var(--c-accent-txt)', border: '1px solid var(--c-border2)' }
+                      : { color: 'var(--c-text2)', border: '1px solid var(--c-border)' }}>
+                    <Moon className="w-3.5 h-3.5" /> Dark
+                  </button>
+                  <button onClick={() => isDark && toggle()}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium transition-all"
+                    style={!isDark
+                      ? { background: 'var(--c-accent-bg)', color: 'var(--c-accent-txt)', border: '1px solid var(--c-border2)' }
+                      : { color: 'var(--c-text2)', border: '1px solid var(--c-border)' }}>
+                    <Sun className="w-3.5 h-3.5" /> Light
+                  </button>
                 </div>
               </div>
             )}

@@ -119,17 +119,7 @@ const FolderCard = ({ folder, allFolders, canEdit, isAdmin, currentUser, onOpen,
       )}
 
       {confirmDelete && (
-        <div onClick={e => e.stopPropagation()}
-          className="absolute top-8 right-2 z-20 rounded-lg p-3 space-y-2"
-          style={{ background: 'var(--c-danger-bg)', border: '1px solid rgba(239,68,68,0.2)', boxShadow: '0 8px 24px rgba(0,0,0,0.16)', minWidth: 180 }}>
-          <p className="text-xs" style={{ color: 'var(--c-danger)' }}>Delete "{folder.name}"?</p>
-          <div className="flex gap-2">
-            <button onClick={handleDelete}
-              className="flex-1 text-xs font-semibold py-1 rounded-lg text-white"
-              style={{ background: 'var(--c-danger)' }}>Yes</button>
-            <button onClick={() => setConfirmDelete(false)} className="btn-secondary text-xs px-2 py-1 flex-1">Cancel</button>
-          </div>
-        </div>
+        <DeleteFolderModal folder={folder} onClose={() => setConfirmDelete(false)} onConfirm={handleDelete} />
       )}
 
       {showDetails && (
@@ -249,6 +239,37 @@ const FolderDetailsModal = ({ folder, subfolderCount, parentName, currentUser, i
         </div>
 
         <button onClick={onClose} className="btn-secondary w-full text-sm mt-1">Close</button>
+      </div>
+    </Modal>
+  );
+};
+
+// A real centered Modal instead of a popup anchored to the card — a fixed
+// minWidth positioned relative to a small grid tile could run off-screen or
+// get clipped depending on where the card fell in the grid.
+const DeleteFolderModal = ({ folder, onClose, onConfirm }) => {
+  const [deleting, setDeleting] = useState(false);
+
+  const handleConfirm = async () => {
+    setDeleting(true);
+    try { await onConfirm(); }
+    finally { setDeleting(false); }
+  };
+
+  return (
+    <Modal onClose={onClose} title="Delete Folder" maxWidth="max-w-sm">
+      <div className="p-6 space-y-4">
+        <p className="text-sm" style={{ color: 'var(--c-text)' }}>
+          Delete "<span className="font-semibold">{folder.name}</span>"? This cannot be undone.
+        </p>
+        <div className="flex gap-3">
+          <button onClick={handleConfirm} disabled={deleting}
+            className="flex-1 text-sm font-semibold py-2 rounded-lg text-white disabled:opacity-50"
+            style={{ background: 'var(--c-danger)' }}>
+            {deleting ? 'Deleting…' : 'Yes, delete'}
+          </button>
+          <button onClick={onClose} disabled={deleting} className="btn-secondary flex-1">Cancel</button>
+        </div>
       </div>
     </Modal>
   );

@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, Clock, MessageCircle, Settings, CheckSquare,
   FolderOpen, Sun, Moon, Plus, Trash2, Check, X, Pencil, Building2, LogOut,
-  Share2, Lock, ChevronRight,
+  Share2, Lock, ChevronRight, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { useTheme } from '../lib/ThemeContext';
 import OncLogo from './OncLogo';
@@ -205,6 +205,12 @@ const Sidebar = ({
   useEffect(() => { localStorage.setItem('dv-orgs-collapsed', (!orgsExpanded).toString()); }, [orgsExpanded]);
   useEffect(() => { localStorage.setItem('dv-ws-collapsed', (!wsExpanded).toString()); }, [wsExpanded]);
 
+  // Desktop-only: hide the whole sidebar down to a small reopen button.
+  // Mobile already has its own open/close drawer flow via isOpen/onClose —
+  // this is separate and never applies there.
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('dv-sidebar-collapsed') === 'true');
+  useEffect(() => { localStorage.setItem('dv-sidebar-collapsed', collapsed.toString()); }, [collapsed]);
+
   // Public items first, private ones below — until shared/made public, a
   // private org/workspace stays out of the way at the bottom of the list.
   const byVisibility = (a, b) => (a.visibility === 'private' ? 1 : 0) - (b.visibility === 'private' ? 1 : 0);
@@ -326,13 +332,21 @@ const Sidebar = ({
                 border: '1px solid var(--c-border)', cursor: 'pointer' }}>
               {isDark ? <Sun size={13} /> : <Moon size={13} />}
             </button>
-            {isMobile && (
-              <button onClick={onClose}
+            {isMobile ? (
+              <button onClick={onClose} title="Close sidebar"
                 style={{ width: 28, height: 28, borderRadius: 7, flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: 'var(--c-surface2)', color: 'var(--c-text2)',
                   border: '1px solid var(--c-border)', cursor: 'pointer' }}>
                 <X size={13} />
+              </button>
+            ) : (
+              <button onClick={() => setCollapsed(true)} title="Hide sidebar"
+                style={{ width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'var(--c-surface2)', color: 'var(--c-text2)',
+                  border: '1px solid var(--c-border)', cursor: 'pointer' }}>
+                <PanelLeftClose size={13} />
               </button>
             )}
           </div>
@@ -620,7 +634,27 @@ const Sidebar = ({
     />
   );
 
-  if (!isMobile) return <>{sidebarBody}{shareModal}</>;
+  if (!isMobile) {
+    if (collapsed) {
+      return (
+        <>
+          <button onClick={() => setCollapsed(false)} title="Show sidebar"
+            style={{
+              position: 'fixed', top: 16, left: 16, zIndex: 50,
+              width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'var(--c-surface2)', color: 'var(--c-text2)',
+              border: '1px solid var(--c-border)', cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            }}>
+            <PanelLeftOpen size={16} />
+          </button>
+          {shareModal}
+        </>
+      );
+    }
+    return <>{sidebarBody}{shareModal}</>;
+  }
 
   // Mobile: drawer + backdrop overlay
   return (
