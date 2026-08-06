@@ -147,7 +147,10 @@ const PdfPreview = ({ blobUrl }) => {
 
   useEffect(() => {
     let cancelled = false;
-    let pdfDoc = null;
+    // .destroy() lives on the loading task getDocument() returns, not on the
+    // PDFDocumentProxy its .promise resolves to — calling it on the proxy
+    // throws "destroy is not a function" on every cleanup (i.e. every close).
+    let loadingTask = null;
     setRendering(true);
     setError(false);
 
@@ -158,7 +161,8 @@ const PdfPreview = ({ blobUrl }) => {
           fetch(blobUrl).then(r => r.arrayBuffer()),
         ]);
         if (cancelled) return;
-        pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+        loadingTask = pdfjsLib.getDocument({ data: buf });
+        const pdfDoc = await loadingTask.promise;
         if (cancelled) return;
 
         const container = containerRef.current;
@@ -196,7 +200,7 @@ const PdfPreview = ({ blobUrl }) => {
 
     return () => {
       cancelled = true;
-      if (pdfDoc) pdfDoc.destroy();
+      if (loadingTask) loadingTask.destroy();
     };
   }, [blobUrl]);
 
