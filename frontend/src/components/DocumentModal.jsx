@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Trash2, Upload, Pencil, Check, X, Clock, Eye, EyeOff, FolderInput, FileWarning, Lock, Globe } from 'lucide-react';
+import { Download, Trash2, Upload, Pencil, Check, X, Clock, Eye, EyeOff, FolderInput, FileWarning, Lock, Globe, Maximize2, Minimize2 } from 'lucide-react';
 import { format } from 'date-fns';
 import FileIcon from './FileIcon';
 import Spinner from './ui/Spinner';
@@ -10,6 +10,23 @@ import {
   fetchPreviewBlob, fetchDocumentUrl, downloadDocumentFile, fetchWorkspaces, fetchFolders,
 } from '../services/api';
 import toast from 'react-hot-toast';
+
+// Loaded on demand (not at module scope) so pdf.js — a ~450KB-gzipped
+// dependency — is only ever fetched by users who actually open a PDF
+// preview, not on every page load.
+let _pdfjsLibPromise;
+const getPdfjs = () => {
+  if (!_pdfjsLibPromise) {
+    _pdfjsLibPromise = Promise.all([
+      import('pdfjs-dist'),
+      import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+    ]).then(([lib, worker]) => {
+      lib.GlobalWorkerOptions.workerSrc = worker.default;
+      return lib;
+    });
+  }
+  return _pdfjsLibPromise;
+};
 
 // Rendered directly in-browser from an authenticated blob.
 const NATIVE_TYPES = [
@@ -109,18 +126,98 @@ const NativePreview = ({ docId, fileType, name }) => {
     );
   }
   if (fileType === 'application/pdf') {
-    return (
-      <embed
-        src={blobUrl}
-        type="application/pdf"
-        style={{ display: 'block', width: '100%', height: '100%', background: 'var(--c-bg)' }}
-      />
-    );
+    return <PdfPreview blobUrl={blobUrl} />;
   }
   if (fileType === 'text/plain') {
     return <TextPreview blobUrl={blobUrl} />;
   }
   return null;
+};
+
+// <embed type="application/pdf"> only works on browsers with a native PDF
+// plugin — most desktop/mobile browsers have one, but many smart TV browsers
+// (webOS, Tizen, Fire TV's Silk, etc.) don't, so the element loads with
+// nothing ever drawn. Rendering the pages ourselves onto <canvas> via pdf.js
+// works identically everywhere Canvas2D exists, which is effectively every
+// browser including TVs.
+const PdfPreview = ({ blobUrl }) => {
+  const containerRef = useRef(null);
+  const [error, setError]     = useState(false);
+  const [rendering, setRendering] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    let pdfDoc = null;
+    setRendering(true);
+    setError(false);
+
+    (async () => {
+      try {
+        const [pdfjsLib, buf] = await Promise.all([
+          getPdfjs(),
+          fetch(blobUrl).then(r => r.arrayBuffer()),
+        ]);
+        if (cancelled) return;
+        pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+        if (cancelled) return;
+
+        const container = containerRef.current;
+        if (!container) return;
+        container.innerHTML = '';
+        const containerWidth = container.clientWidth - 32;
+        const outputScale = window.devicePixelRatio || 1;
+
+        for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+          if (cancelled) return;
+          const page = await pdfDoc.getPage(pageNum);
+          const unscaledViewport = page.getViewport({ scale: 1 });
+          const viewport = page.getViewport({ scale: containerWidth / unscaledViewport.width });
+
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.floor(viewport.width * outputScale);
+          canvas.height = Math.floor(viewport.height * outputScale);
+          canvas.style.width = `${Math.floor(viewport.width)}px`;
+          canvas.style.height = `${Math.floor(viewport.height)}px`;
+          canvas.style.display = 'block';
+          canvas.style.margin = pageNum === pdfDoc.numPages ? '0 auto' : '0 auto 12px';
+          canvas.style.boxShadow = '0 1px 4px rgba(0,0,0,0.15)';
+          container.appendChild(canvas);
+
+          const ctx = canvas.getContext('2d');
+          const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+          await page.render({ canvasContext: ctx, viewport, transform }).promise;
+        }
+      } catch {
+        if (!cancelled) setError(true);
+      } finally {
+        if (!cancelled) setRendering(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (pdfDoc) pdfDoc.destroy();
+    };
+  }, [blobUrl]);
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p className="text-sm" style={{ color: 'var(--c-text2)' }}>Preview unavailable.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: 'relative', height: '100%', overflow: 'auto', background: 'var(--c-bg)' }}>
+      {rendering && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Spinner />
+        </div>
+      )}
+      <div ref={containerRef} style={{ padding: 16 }} />
+    </div>
+  );
 };
 
 // Word/Excel/PowerPoint have no in-browser renderer, so a short-lived
@@ -192,6 +289,8 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
   const [moveFolderId, setMoveFolderId] = useState(doc.folder_id || '');
   const [moving, setMoving] = useState(false);
   const versionInputRef = useRef(null);
+  const previewContainerRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const isAdmin = currentUser?.role === 'admin';
   const isOwner = !!currentUser?.id && currentUser.id === doc.owner_id;
@@ -213,6 +312,31 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
     if (!showMove || !moveWorkspaceId) { setMoveFolders([]); return; }
     fetchFolders(moveWorkspaceId).then(setMoveFolders);
   }, [showMove, moveWorkspaceId]);
+
+  useEffect(() => {
+    // Older WebKit-based TV browsers (webOS, Tizen) only expose the
+    // prefixed Fullscreen API, not the standard one.
+    const onFullscreenChange = () =>
+      setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = () => {
+    const current = document.fullscreenElement || document.webkitFullscreenElement;
+    if (current) {
+      (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+      return;
+    }
+    const el = previewContainerRef.current;
+    const request = el?.requestFullscreen || el?.webkitRequestFullscreen;
+    if (request) request.call(el);
+    else toast.error('Fullscreen is not supported on this device.');
+  };
 
   const save = async (patch) => {
     setSaving(true);
@@ -499,6 +623,13 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
                 </button>
               ))}
             </div>
+            {tab === 'preview' && (
+              <button onClick={toggleFullscreen} className="btn-secondary text-xs px-3 py-1.5"
+                title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen preview'}>
+                {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              </button>
+            )}
             {tab === 'versions' && isAdmin && (
               <>
                 <input ref={versionInputRef} type="file" className="hidden" onChange={handleVersionUpload} />
@@ -512,7 +643,7 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
           {/* Panel content */}
           <div className="flex-1 overflow-hidden" style={{ display: 'flex', flexDirection: 'column' }}>
             {tab === 'preview' && (
-              <div style={{ flex: 1, overflow: 'hidden' }}>
+              <div ref={previewContainerRef} style={{ flex: 1, overflow: 'hidden', background: 'var(--c-bg)' }}>
                 <PreviewPane docId={doc.id} fileType={doc.file_type} name={doc.name} onDownload={handleDownload} />
               </div>
             )}
