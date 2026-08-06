@@ -82,22 +82,23 @@ const PreviewPane = ({ docId, fileType, name, onDownload }) => {
 // the element at a local object URL sidesteps that entirely.
 const NativePreview = ({ docId, fileType, name }) => {
   const [blobUrl, setBlobUrl] = useState(null);
-  const [error, setError]     = useState(false);
+  const [error, setError]     = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     let objectUrl;
     setBlobUrl(null);
-    setError(false);
+    setError(null);
     fetchPreviewBlob(docId)
       .then((blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
         setBlobUrl(objectUrl);
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
-        setError(true);
+        console.error('Preview blob fetch failed:', err);
+        setError(err?.response?.status ? `HTTP ${err.response.status}` : (err?.message || 'fetch failed'));
         toast.error('Could not load preview.');
       });
     return () => {
@@ -109,8 +110,9 @@ const NativePreview = ({ docId, fileType, name }) => {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex flex-col items-center justify-center h-full gap-1">
         <p className="text-sm" style={{ color: 'var(--c-text2)' }}>Preview unavailable.</p>
+        <p className="text-xs font-mono" style={{ color: 'var(--c-text3)' }}>{error}</p>
       </div>
     );
   }
@@ -142,7 +144,7 @@ const NativePreview = ({ docId, fileType, name }) => {
 // browser including TVs.
 const PdfPreview = ({ blobUrl }) => {
   const containerRef = useRef(null);
-  const [error, setError]     = useState(false);
+  const [error, setError]     = useState(null);
   const [rendering, setRendering] = useState(true);
 
   useEffect(() => {
@@ -152,7 +154,7 @@ const PdfPreview = ({ blobUrl }) => {
     // throws "destroy is not a function" on every cleanup (i.e. every close).
     let loadingTask = null;
     setRendering(true);
-    setError(false);
+    setError(null);
 
     (async () => {
       try {
@@ -195,8 +197,11 @@ const PdfPreview = ({ blobUrl }) => {
           const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
           await page.render({ canvasContext: ctx, viewport, transform }).promise;
         }
-      } catch {
-        if (!cancelled) setError(true);
+      } catch (err) {
+        if (!cancelled) {
+          console.error('PDF render failed:', err);
+          setError(err?.message || err?.name || 'render failed');
+        }
       } finally {
         if (!cancelled) setRendering(false);
       }
@@ -210,8 +215,9 @@ const PdfPreview = ({ blobUrl }) => {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex flex-col items-center justify-center h-full gap-1">
         <p className="text-sm" style={{ color: 'var(--c-text2)' }}>Preview unavailable.</p>
+        <p className="text-xs font-mono" style={{ color: 'var(--c-text3)' }}>{error}</p>
       </div>
     );
   }
@@ -244,8 +250,9 @@ const OfficePreview = ({ docId, name, onDownload }) => {
         if (cancelled) return;
         setViewerUrl(`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`);
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
+        console.error('Office preview URL fetch failed:', err);
         setError(true);
         toast.error('Could not load preview.');
       });

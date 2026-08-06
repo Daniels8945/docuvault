@@ -172,7 +172,10 @@
 
   /* ── Modal ── */
   .modal-overlay {
-    @apply fixed inset-0 flex items-center justify-center z-50 p-4 overflow-y-auto;
+    /* Must beat the mobile header/footer bars (z-index: 100, fixed, App.jsx)
+       and the sidebar drawer (z-index: 200, Sidebar.jsx) — modals need to sit
+       above all standing app chrome, not just above page content. */
+    @apply fixed inset-0 flex items-center justify-center z-[300] p-4 overflow-y-auto;
     background: rgba(0,0,0,0.55);
     backdrop-filter: blur(4px);
   }
