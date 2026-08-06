@@ -220,17 +220,29 @@ async def waha_webhook(request: Request, session: Session = Depends(get_session)
     media_url = raw_url or f"{WAHA_BASE_URL}/api/default/messages/{msg_id}/download-media"
     headers = {"X-Api-Key": WAHA_API_KEY} if WAHA_API_KEY else {}
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(media_url, headers=headers)
-        if resp.status_code != 200:
-            log.warning("Media download failed: url=%s  status=%d", media_url, resp.status_code)
-            WHATSAPP_MESSAGES.labels(status="failed").inc()
-            return {"status": "media_download_failed", "code": resp.status_code}
-        file_bytes = resp.content
-        content_type = resp.headers.get("content-type", mimetype).split(";")[0]
-        content_disp = resp.headers.get("content-disposition", "")
-        if "filename=" in content_disp:
-            filename = content_disp.split("filename=")[-1].strip('"').strip("'")
+    # WAHA has to fetch and decrypt the file from WhatsApp's E2E-encrypted media
+    # servers before it can hand it back to us — for multi-MB attachments that
+    # routinely takes well over 30s. The old 30s timeout with no error handling
+    # meant it raised an unhandled httpx exception straight through the request
+    # handler on anything but small files, 500ing the whole webhook (and never
+    # getting a clean retry, since WAHA saw a 500, not a graceful error).
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.get(media_url, headers=headers)
+    except httpx.HTTPError as exc:
+        log.warning("Media download errored: url=%s  error=%s", media_url, exc)
+        WHATSAPP_MESSAGES.labels(status="failed").inc()
+        return {"status": "media_download_failed", "detail": str(exc)}
+
+    if resp.status_code != 200:
+        log.warning("Media download failed: url=%s  status=%d", media_url, resp.status_code)
+        WHATSAPP_MESSAGES.labels(status="failed").inc()
+        return {"status": "media_download_failed", "code": resp.status_code}
+    file_bytes = resp.content
+    content_type = resp.headers.get("content-type", mimetype).split(";")[0]
+    content_disp = resp.headers.get("content-disposition", "")
+    if "filename=" in content_disp:
+        filename = content_disp.split("filename=")[-1].strip('"').strip("'")
 
     # File size guard — reject oversized attachments
     if len(file_bytes) > MAX_WHATSAPP_BYTES:

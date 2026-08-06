@@ -643,7 +643,22 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
           {/* Panel content */}
           <div className="flex-1 overflow-hidden" style={{ display: 'flex', flexDirection: 'column' }}>
             {tab === 'preview' && (
-              <div ref={previewContainerRef} style={{ flex: 1, overflow: 'hidden', background: 'var(--c-bg)' }}>
+              <div ref={previewContainerRef} style={{ flex: 1, overflow: 'hidden', position: 'relative', background: 'var(--c-bg)' }}>
+                {/* The tab-bar toggle sits outside this element, so once it's
+                    the fullscreen element that button is no longer visible or
+                    reachable — this lives inside it instead, so there's always
+                    a way to exit without a keyboard's Escape key (TV remotes). */}
+                {isFullscreen && (
+                  <button onClick={toggleFullscreen} title="Exit fullscreen"
+                    style={{
+                      position: 'absolute', top: 12, right: 12, zIndex: 10,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '8px 12px', borderRadius: 8, border: 'none',
+                      background: 'rgba(0,0,0,0.6)', color: '#fff', cursor: 'pointer',
+                    }}>
+                    <Minimize2 className="w-3.5 h-3.5" /> Exit fullscreen
+                  </button>
+                )}
                 <PreviewPane docId={doc.id} fileType={doc.file_type} name={doc.name} onDownload={handleDownload} />
               </div>
             )}
