@@ -168,7 +168,11 @@ const PdfPreview = ({ blobUrl }) => {
         const container = containerRef.current;
         if (!container) return;
         container.innerHTML = '';
-        const containerWidth = container.clientWidth - 32;
+        // container.clientWidth can still read 0 here if this mounts before
+        // the surrounding flex layout (order-reordered on mobile) has settled
+        // — a zero/negative width would feed pdf.js an invalid render scale
+        // and fail every page. Fall back to the viewport width in that case.
+        const containerWidth = (container.clientWidth || window.innerWidth) - 32;
         const outputScale = window.devicePixelRatio || 1;
 
         for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
