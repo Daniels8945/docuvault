@@ -4,7 +4,7 @@ import { X } from 'lucide-react';
 const Modal = ({ onClose, title, children, maxWidth = 'max-w-2xl' }) => (
   <div className="modal-overlay fade-in-up" onClick={onClose}>
     <div
-      className={`${maxWidth} w-full max-h-[90vh] flex flex-col`}
+      className={`${maxWidth} w-full max-h-[90dvh] flex flex-col`}
       style={{
         background: 'var(--c-surface)',
         border: '1px solid var(--c-border2)',

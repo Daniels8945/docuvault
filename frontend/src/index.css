@@ -172,7 +172,7 @@
 
   /* ── Modal ── */
   .modal-overlay {
-    @apply fixed inset-0 flex items-center justify-center z-50 p-4;
+    @apply fixed inset-0 flex items-center justify-center z-50 p-4 overflow-y-auto;
     background: rgba(0,0,0,0.55);
     backdrop-filter: blur(4px);
   }

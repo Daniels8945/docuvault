@@ -434,8 +434,8 @@ const DocumentModal = ({ document: doc, currentUser, onClose, onUpdate }) => {
         <div className="flex md:hidden items-center justify-between px-4 py-3 flex-shrink-0"
           style={{ borderBottom: '1px solid var(--c-border)' }}>
           <p className="text-sm font-semibold truncate flex-1 mr-3" style={{ color: 'var(--c-text)' }}>{doc.name}</p>
-          <button onClick={onClose} className="p-1 rounded-lg flex-shrink-0" style={{ color: 'var(--c-text2)' }}>
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="p-2.5 -m-1 rounded-lg flex-shrink-0" style={{ color: 'var(--c-text2)' }}>
+            <X className="w-5 h-5" />
           </button>
         </div>
 
