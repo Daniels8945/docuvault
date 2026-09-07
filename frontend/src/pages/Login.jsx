@@ -22,6 +22,7 @@ const Login = () => {
   const [mode, setMode]       = useState('checking');
   const [form, setForm]       = useState({ name: '', email: '', password: '' });
   const [error, setError]     = useState('');
+  const [notice, setNotice]   = useState('');
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw]   = useState(false);
 
@@ -29,6 +30,13 @@ const Login = () => {
     fetchSetupStatus()
       .then(({ setup_complete }) => setMode(setup_complete ? 'login' : 'setup'))
       .catch(() => setMode('login')); // endpoint missing or network error → show login
+  }, []);
+
+  useEffect(() => {
+    if (sessionStorage.getItem('dv-session-expired')) {
+      sessionStorage.removeItem('dv-session-expired');
+      setNotice('Your session expired — sign in again to continue.');
+    }
   }, []);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -45,6 +53,7 @@ const Login = () => {
       login(res.access_token, res.user);
       navigate('/', { replace: true });
     } catch (err) {
+      setNotice('');
       setError(formatError(err));
     } finally {
       setLoading(false);
@@ -90,6 +99,19 @@ const Login = () => {
 
         {/* Card */}
         <div className="glass-card" style={{ borderRadius: 14, padding: 28 }}>
+          {notice && !error && (
+            <div style={{
+              background: 'var(--c-accent-bg)',
+              border: '1px solid var(--c-border2)',
+              borderRadius: 8,
+              padding: '10px 14px',
+              fontSize: 13,
+              color: 'var(--c-accent-txt)',
+              marginBottom: 16,
+            }}>
+              {notice}
+            </div>
+          )}
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
             {mode === 'setup' && (

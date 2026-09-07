@@ -18,6 +18,11 @@ api.interceptors.response.use(
   err => {
     if (err?.response?.status === 401 && window.location.pathname !== '/login') {
       localStorage.removeItem('dv-token');
+      // Login.jsx reads this once to explain *why* the user landed back here —
+      // a silent redirect with no message reads as "the app broke" rather than
+      // "your session expired," which has caused real confusion in practice
+      // (e.g. looking like missing data when it's really just a stale session).
+      sessionStorage.setItem('dv-session-expired', '1');
       window.location.href = '/login';
     }
     return Promise.reject(err);
