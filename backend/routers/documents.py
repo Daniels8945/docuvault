@@ -71,7 +71,12 @@ def get_documents(
         query = query.where(Document.status == status)
     if search:
         query = query.where(Document.name.contains(search))
-    query = query.offset(skip).limit(limit)
+    # Without an explicit order, Postgres makes no guarantee about which rows
+    # a LIMIT-capped query returns — for a workspace that grows past `limit`
+    # (ws_inbox in particular, fed continuously by WhatsApp), the "first N"
+    # rows the planner happens to pick can silently stop being the newest
+    # ones, making new uploads invisible while looking like nothing's wrong.
+    query = query.order_by(Document.created_at.desc()).offset(skip).limit(limit)
     return session.exec(query).all()
 
 
